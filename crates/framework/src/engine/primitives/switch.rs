@@ -59,8 +59,12 @@ macro_rules! Switch {
 pub const SWITCH_ANDROID_SNIPPET: &str = r#"
 "switch" -> {
     val on_change_str = node.getString("on_change", "")
-        val on_change_action: () -> Unit = { if (on_change_str.isNotEmpty()) dispatch(on_change_str, null) }
         val value = node.getBoolean("value", false)
+        val on_change_action: (Boolean) -> Unit = { newVal ->
+            if (on_change_str.isNotEmpty()) {
+                dispatch(on_change_str, org.json.JSONObject().put("value", newVal))
+            }
+        }
         val title = node.getString("title", "")
         if (title.isNotEmpty()) {
             Row(
@@ -69,10 +73,10 @@ pub const SWITCH_ANDROID_SNIPPET: &str = r#"
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(title, style = MaterialTheme.typography.bodyLarge)
-                Switch(checked = value, onCheckedChange = { on_change_action() })
+                Switch(checked = value, onCheckedChange = { on_change_action(it) })
             }
         } else {
-            Switch(checked = value, onCheckedChange = { on_change_action() })
+            Switch(checked = value, onCheckedChange = { on_change_action(it) })
         }
 }
 "#;
@@ -80,13 +84,20 @@ pub const SWITCH_ANDROID_SNIPPET: &str = r#"
 pub const SWITCH_IOS_SNIPPET: &str = r#"
 case "switch":
     let on_change_str = node.props["on_change"] as? String ?? ""
-        let on_change_action: () -> Void = { if !on_change_str.isEmpty { dispatch(on_change_str, nil) } }
         let value = node.props["value"] as? Bool ?? false
         let title = node.props["title"] as? String ?? ""
+        let binding = Binding<Bool>(
+            get: { value },
+            set: { newVal in
+                if !on_change_str.isEmpty {
+                    dispatch(on_change_str, ["value": newVal])
+                }
+            }
+        )
         if !title.isEmpty {
-            Toggle(title, isOn: Binding(get: { value }, set: { _ in on_change_action() }))
+            Toggle(title, isOn: binding)
         } else {
-            Toggle(isOn: Binding(get: { value }, set: { _ in on_change_action() })) { EmptyView() }.labelsHidden()
+            Toggle(isOn: binding) { EmptyView() }.labelsHidden()
         }
 "#;
 

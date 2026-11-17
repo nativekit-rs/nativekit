@@ -122,6 +122,33 @@ pub fn start_host_server(bridge: std::sync::Arc<dyn DevHostBridge>) {
                         .with_header(tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap());
                     let _ = request.respond(response);
                 } else if url == "/api/ui_layout" {
+                    if let Some((_, query)) = raw_url.split_once('?') {
+                        for pair in query.split('&') {
+                            if let Some((k, v)) = pair.split_once('=') {
+                                if k == "path" && !v.is_empty() {
+                                    let mut decoded = String::new();
+                                    let mut chars = v.chars().peekable();
+                                    while let Some(c) = chars.next() {
+                                        if c == '%' {
+                                            if let (Some(c1), Some(c2)) = (chars.next(), chars.next()) {
+                                                if let Ok(byte) = u8::from_str_radix(&format!("{}{}", c1, c2), 16) {
+                                                    decoded.push(byte as char);
+                                                    continue;
+                                                }
+                                            }
+                                        } else if c == '+' {
+                                            decoded.push(' ');
+                                        } else {
+                                            decoded.push(c);
+                                        }
+                                    }
+                                    if !decoded.is_empty() && decoded != "/" {
+                                        b.navigate(&decoded);
+                                    }
+                                }
+                            }
+                        }
+                    }
                     let data = b.get_ui_b64();
                     let ts_str = get_reload_timestamp().to_string();
                     let response = tiny_http::Response::from_string(data)
@@ -144,6 +171,7 @@ pub fn start_host_server(bridge: std::sync::Arc<dyn DevHostBridge>) {
                     let payload = json_val.and_then(|j| j.get("payload").cloned());
 
                     let data = b.dispatch_event(&action, payload);
+                    notify_reload();
                     let ts_str = get_reload_timestamp().to_string();
                     let response = tiny_http::Response::from_string(data)
                         .with_header(tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap())
@@ -170,6 +198,7 @@ pub fn start_host_server(bridge: std::sync::Arc<dyn DevHostBridge>) {
                         .to_string();
                     let payload = json_val.and_then(|j| j.get("payload").cloned());
                     let _ = b.dispatch_event(&action, payload);
+                    notify_reload();
                     let data = b.get_ui_json();
                     let response = tiny_http::Response::from_string(data)
                         .with_header(tiny_http::Header::from_bytes(&b"Access-Control-Allow-Origin"[..], &b"*"[..]).unwrap())
@@ -276,7 +305,6 @@ pub fn dispatch_event<T: App>(action: &str, payload: Option<serde_json::Value>) 
     
     let clean_action = action.trim_matches('"');
     
-    println!("Received dispatch: {}", clean_action);
     if clean_action == "navigate" {
         let path = payload.as_ref()
             .and_then(|p| p.get("path").and_then(|s| s.as_str()).or_else(|| p.as_str()))

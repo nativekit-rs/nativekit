@@ -928,7 +928,7 @@ extension View {{
         let bgImg = node.props["background_image"] as? String ?? ""
         let bgGrad = node.props["background_gradient"] as? [String: Any]
 
-        self
+        let styled = self
             .padding(pad)
             .background {{
                 if !bgImg.isEmpty {{
@@ -953,9 +953,15 @@ extension View {{
                 }} else if !bgName.isEmpty, let col = resolveAppColor(bgName) {{
                     col
                 }}
-            }}
-            .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
-            .opacity(opacity)
+            }};
+        if radius > 0 || !bgImg.isEmpty {{
+            styled
+                .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+                .opacity(opacity)
+        }} else {{
+            styled
+                .opacity(opacity)
+        }}
     }}
 }}
 "##;

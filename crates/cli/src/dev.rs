@@ -44,13 +44,7 @@ pub static LINUX_CHILD: std::sync::Mutex<Option<std::process::Child>> = std::syn
 pub fn clear_and_print_header() {
     print!("\x1B[2J\x1B[1;1H");
     
-    // NativeKit Multi-Color Logo
-    println!("\x1B[1;37m  _   _       _   _           \x1B[38;5;33m_  ___\x1B[38;5;46m _   \x1B[0m");
-    println!("\x1B[1;37m | \\ | |     | | (_)         \x1B[38;5;33m| |/ (_)\x1B[38;5;46m |  \x1B[0m");
-    println!("\x1B[1;37m |  \\| | __ _| |_ ___   _____\x1B[38;5;33m| ' / _|\x1B[38;5;46m |_ \x1B[0m");
-    println!("\x1B[1;37m | . ` |/ _` | __| \\ \\ / / _ \\\x1B[38;5;33m  < | |\x1B[38;5;46m __|\x1B[0m");
-    println!("\x1B[1;37m | |\\  | (_| | |_| |\\ V /  __/\x1B[38;5;46m . \\| | |_ \x1B[0m");
-    println!("\x1B[1;37m \\_| \\_/\\__,_|\\__|_| \\_/ \\___\x1B[38;5;46m|_|\\_\\_|\\__|\x1B[0m\n");
+    println!("\n\x1B[1;38;5;33mNativeKit App\x1B[0m\n");
     
     let dim = "\x1B[90m";
     let reset = "\x1B[0m";
@@ -279,24 +273,77 @@ fn wait_for_boot(adb: &str, serial: &str) {
     }
 }
 
+fn find_preferred_ios_simulator_udid() -> Option<String> {
+    let out = Command::new("xcrun")
+        .args(["simctl", "list", "devices", "available", "-j"])
+        .output()
+        .ok()?;
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).ok()?;
+    let devices_map = json.get("devices")?.as_object()?;
+
+    // Sort runtime keys descending so the newest iOS runtime (e.g. iOS-26-5) is checked first
+    let mut runtime_keys: Vec<&String> = devices_map
+        .keys()
+        .filter(|k| k.contains("iOS"))
+        .collect();
+    runtime_keys.sort_by(|a, b| b.cmp(a));
+
+    // Check if an iPhone on the newest runtime is already booted
+    for rt in &runtime_keys {
+        if let Some(arr) = devices_map.get(*rt).and_then(|v| v.as_array()) {
+            for dev in arr {
+                let state = dev.get("state").and_then(|v| v.as_str()).unwrap_or("");
+                let name = dev.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                if state == "Booted" && name.contains("iPhone") {
+                    if let Some(udid) = dev.get("udid").and_then(|v| v.as_str()) {
+                        return Some(udid.to_string());
+                    }
+                }
+            }
+        }
+    }
+
+    // Otherwise, pick the best iPhone on the newest available iOS runtime (preferring Pro models)
+    if let Some(newest_rt) = runtime_keys.first() {
+        if let Some(arr) = devices_map.get(*newest_rt).and_then(|v| v.as_array()) {
+            for preferred in ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone"] {
+                for dev in arr {
+                    let is_avail = dev.get("isAvailable").and_then(|v| v.as_bool()).unwrap_or(true);
+                    let name = dev.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                    if is_avail && name.contains(preferred) {
+                        if let Some(udid) = dev.get("udid").and_then(|v| v.as_str()) {
+                            return Some(udid.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn build_and_launch_ios() {
 
     let start_time = std::time::Instant::now();
 
-    let sim_check = Command::new("xcrun")
-        .args(["simctl", "list", "devices", "booted"])
-        .output();
-
-    let mut is_booted = false;
-    if let Ok(out) = sim_check {
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        if stdout.contains("Booted") {
-            is_booted = true;
-        }
-    }
-
-    if !is_booted {
-        let _ = Command::new("open").args(["-a", "Simulator"]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+    let target_udid = find_preferred_ios_simulator_udid();
+    if let Some(ref udid) = target_udid {
+        let _ = Command::new("xcrun")
+            .args(["simctl", "boot", udid])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        let _ = Command::new("open")
+            .args(["-a", "Simulator", "--args", "-CurrentDeviceUDID", udid])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    } else {
+        let _ = Command::new("open")
+            .args(["-a", "Simulator"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 
     let is_building = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
@@ -341,9 +388,10 @@ pub fn build_and_launch_ios() {
 
     if let Ok(out) = status {
         if out.status.success() {
-            let _ = Command::new("xcrun").args(["simctl", "terminate", "booted", &bundle_id]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-            let _ = Command::new("xcrun").args(["simctl", "install", "booted", &app_path]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
-            let _ = Command::new("xcrun").args(["simctl", "launch", "booted", &bundle_id]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+            let sim_target = target_udid.as_deref().unwrap_or("booted");
+            let _ = Command::new("xcrun").args(["simctl", "terminate", sim_target, &bundle_id]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+            let _ = Command::new("xcrun").args(["simctl", "install", sim_target, &app_path]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
+            let _ = Command::new("xcrun").args(["simctl", "launch", sim_target, &bundle_id]).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).status();
             
             let _ = Command::new("stty").args(["-raw", "echo"]).status();
             IOS_COMPILE_TIME.store(start_time.elapsed().as_millis() as u64, std::sync::atomic::Ordering::SeqCst);
@@ -564,14 +612,17 @@ pub fn generate_gtk_dev_shell() {
             if let Some(name) = val.get("name").and_then(|v| v.as_str()) {
                 app_title = name.to_string();
                 app_name = name.replace(" ", "");
-                app_name_lower = app_name.to_lowercase();
+                app_name_lower = app_name
+                    .chars()
+                    .map(|c| if c.is_ascii_alphanumeric() { c.to_ascii_lowercase() } else { '_' })
+                    .collect();
             }
         }
     }
 
     let crate_name = crate::project::project_crate_name();
     let gtk_toml = format!(r#"[package]
-name = "{}"
+name = "{}_linux_shell"
 version = "0.1.0"
 edition = "2021"
 
@@ -606,6 +657,7 @@ use libadwaita::prelude::*;\nuse gtk4::Widget;\nuse crate::{{DynamicUINode, pars
     );
 
     let _ = std::fs::create_dir_all(linux_dir.join("src"));
+    let _ = std::fs::remove_file(linux_dir.join("Cargo.lock"));
     let _ = std::fs::write(linux_dir.join("src/generated_primitives.rs"), gen_rs);
     let _ = std::fs::write(linux_dir.join("src/main.rs"), gtk_dev);
     let _ = std::fs::write(linux_dir.join("Cargo.toml"), gtk_toml);

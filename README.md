@@ -41,8 +41,6 @@ Inside the interactive terminal:
 - Press **`l`** to launch the **Linux GTK4 Shell**
 - Press **`w`** to launch the **Windows WinUI 3 Shell**
 - Press **`b`** to open the **Web Shell**
-- Press **`t`** to randomize a cohesive theme across all 5 platforms
-- Press **`s`** to sync theme & icon mappings from **NativeKit Cloud**
 
 ---
 

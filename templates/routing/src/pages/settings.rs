@@ -9,12 +9,11 @@ pub fn SettingsScreen() -> impl IntoNode {
     Return! {
         Page.title("Settings").large_title(true).top_style(.soft) {
             Section.header("Preferences") {
-                HStack.align(.space_between) {
-                    Text("Push Notifications").font(.body)
-                    Switch(enabled).on_change(|s: &mut Store, val: bool| {
-                        s.notifications_enabled = val;
+                Switch(enabled)
+                    .title("Push Notifications")
+                    .on_change(|s: &mut Store| {
+                        s.notifications_enabled = !s.notifications_enabled;
                     })
-                }
             }
         }
     }
