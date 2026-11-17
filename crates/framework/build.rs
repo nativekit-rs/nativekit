@@ -818,6 +818,22 @@ func renderGradientView(_ grad: [String: Any]) -> some View {{
     }}
 }}
 
+struct UnclipListCell: UIViewRepresentable {{
+    func makeUIView(context: Context) -> UIView {{
+        let v = UIView()
+        DispatchQueue.main.async {{
+            var cur: UIView? = v
+            while let p = cur?.superview {{
+                p.clipsToBounds = false
+                if String(describing: type(of: p)).contains("Cell") {{ break }}
+                cur = p
+            }}
+        }}
+        return v
+    }}
+    func updateUIView(_ uiView: UIView, context: Context) {{}}
+}}
+
 struct NativeFlowLayout: Layout {{
     var spacing: CGFloat = 0
     var alignX: String = "left"

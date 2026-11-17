@@ -227,6 +227,29 @@ pub trait SendBound: Send {}
 #[cfg(not(target_arch = "wasm32"))]
 impl<T: Send> SendBound for T {}
 
+#[cfg(not(target_arch = "wasm32"))]
+struct ThreadWaker(std::thread::Thread);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl std::task::Wake for ThreadWaker {
+    fn wake(self: std::sync::Arc<Self>) {
+        self.0.unpark();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn block_on<F: std::future::Future>(fut: F) -> F::Output {
+    let waker = std::task::Waker::from(std::sync::Arc::new(ThreadWaker(std::thread::current())));
+    let mut cx = std::task::Context::from_waker(&waker);
+    let mut fut = std::pin::pin!(fut);
+    loop {
+        match fut.as_mut().poll(&mut cx) {
+            std::task::Poll::Ready(val) => return val,
+            std::task::Poll::Pending => std::thread::park(),
+        }
+    }
+}
+
 pub fn use_resource_async<T, F, Fut>(key: &str, fetcher: F) -> Option<T>
 where
     T: Clone + Send + Sync + 'static,
@@ -262,21 +285,14 @@ where
 
     #[cfg(not(target_arch = "wasm32"))]
     std::thread::spawn(move || {
-        match tokio::runtime::Runtime::new() {
-            Ok(rt) => {
-                rt.block_on(async move {
-                    let result = fetcher().await;
-                    {
-                        let mut cache = resource_cache().lock().unwrap();
-                        cache.insert(key_clone, ResourceState::Loaded(Box::new(result)));
-                    } // Mutex is dropped here
-                    trigger_refresh();
-                });
+        block_on(async move {
+            let result = fetcher().await;
+            {
+                let mut cache = resource_cache().lock().unwrap();
+                cache.insert(key_clone, ResourceState::Loaded(Box::new(result)));
             }
-            Err(e) => {
-                println!("CRITICAL: Failed to start Tokio runtime: {}", e);
-            }
-        }
+            trigger_refresh();
+        });
     });
     
     None

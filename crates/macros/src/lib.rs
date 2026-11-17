@@ -60,8 +60,7 @@ pub fn server(_attr: TokenStream, item: TokenStream) -> TokenStream {
             native_kit::engine::dev_server::ServerRoute {
                 path: concat!("/api/", stringify!(#fn_name)),
                 handler: || {
-                    let rt = tokio::runtime::Runtime::new().unwrap();
-                    let result = rt.block_on(async { #fn_name().await });
+                    let result = native_kit::engine::runtime::block_on(async { #fn_name().await });
                     native_kit::engine::dev_server::IntoRouteResponse::into_response(result)
                 }
             }

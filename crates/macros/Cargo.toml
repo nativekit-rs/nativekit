@@ -1,6 +1,6 @@
 [package]
 name = "native-kit-macros"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Procedural macros and SwiftUI-style declarative UI syntax for the NativeKit engine"
 homepage = "https://nativekit.rs"

@@ -44,110 +44,92 @@ pub static LINUX_CHILD: std::sync::Mutex<Option<std::process::Child>> = std::syn
 pub fn clear_and_print_header() {
     print!("\x1B[2J\x1B[1;1H");
     
-    // NativeKit Orange (208)
     // NativeKit Multi-Color Logo
     println!("\x1B[1;37m  _   _       _   _           \x1B[38;5;33m_  ___\x1B[38;5;46m _   \x1B[0m");
     println!("\x1B[1;37m | \\ | |     | | (_)         \x1B[38;5;33m| |/ (_)\x1B[38;5;46m |  \x1B[0m");
     println!("\x1B[1;37m |  \\| | __ _| |_ ___   _____\x1B[38;5;33m| ' / _|\x1B[38;5;46m |_ \x1B[0m");
     println!("\x1B[1;37m | . ` |/ _` | __| \\ \\ / / _ \\\x1B[38;5;33m  < | |\x1B[38;5;46m __|\x1B[0m");
     println!("\x1B[1;37m | |\\  | (_| | |_| |\\ V /  __/\x1B[38;5;46m . \\| | |_ \x1B[0m");
-    println!("\x1B[1;37m \\_| \\_/\\__,_|\\__|_| \\_/ \\___\x1B[38;5;46m|_|\\_\\_|\\__|\x1B[0m");
-    println!("\n");
+    println!("\x1B[1;37m \\_| \\_/\\__,_|\\__|_| \\_/ \\___\x1B[38;5;46m|_|\\_\\_|\\__|\x1B[0m\n");
     
-    // Dim instructions
-    println!("\x1B[2mCurrent process is running a development server with UI Injection\x1B[0m");
-    println!("\x1B[2mto enable sub-second hot reloading across multiple platforms.\x1B[0m\n");
-    
-    let dim_border = "\x1B[90m";
+    let dim = "\x1B[90m";
     let reset = "\x1B[0m";
-    let url_color = "\x1B[36;1m"; // cyan bold
+    let divider = format!("{dim}────────────────────────────────────────────────────────────{reset}");
     
-    println!("{dim_border}┌────────────────────────────────────────────────────────────────────────┐{reset}");
-    println!("{dim_border}│{reset} 🌐 Server running at {url_color}http://127.0.0.1:5824{reset}                             {dim_border}│{reset}");
-    println!("{dim_border}│{reset} ⚙️ To edit settings, modify \x1B[1mconfig/app.json\x1B[0m                            {dim_border}│{reset}");
-    println!("{dim_border}└────────────────────────────────────────────────────────────────────────┘{reset}\n");
+    println!("⚙️  To edit settings, modify \x1B[1mconfig/app.json\x1B[0m");
+    println!("{divider}");
+    println!("📱 \x1B[1mDevices & Simulators\x1B[0m\n");
     
     let ios = IOS_LAUNCHED.load(Ordering::SeqCst);
     let android = ANDROID_LAUNCHED.load(Ordering::SeqCst);
     
-    println!("{dim_border}┌────────────────────────────────────────────────────────────────────────┐{reset}");
-    println!("{dim_border}│{reset} 📱 Devices & Simulators                                                {dim_border}│{reset}");
-    println!("{dim_border}├────────────────────────────────────────────────────────────────────────┤{reset}");
-    
     if is_platform_enabled("ios") {
         if ios {
-        let status = if IOS_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
-            "\x1B[32m🚀 Connected               \x1B[0m".to_string()
+            let status = if IOS_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
+                "\x1B[32m🚀 Connected\x1B[0m"
+            } else {
+                "\x1B[33m⏳ booting & compiling...\x1B[0m"
+            };
+            println!("  🍎 iOS Simulator     | {}", status);
         } else {
-            "\x1B[33m⏳ booting & compiling...  \x1B[0m".to_string()
-        };
-        println!("{dim_border}│{reset} 🍎 iOS Simulator     | {}                             {dim_border}│{reset}", status);
-    } else {
-        println!("{dim_border}│{reset} 🍎 Press 'i' to launch iOS Simulator                                   {dim_border}│{reset}");
+            println!("  🍎 Press 'i' to launch iOS Simulator");
         }
     }
 
     if is_platform_enabled("android") {
         if android {
-        let status = if ANDROID_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
-            "\x1B[32m🚀 Connected               \x1B[0m".to_string()
+            let status = if ANDROID_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
+                "\x1B[32m🚀 Connected\x1B[0m"
+            } else {
+                "\x1B[33m⏳ booting & compiling...\x1B[0m"
+            };
+            println!("  🤖 Android Emulator  | {}", status);
         } else {
-            "\x1B[33m⏳ booting & compiling...  \x1B[0m".to_string()
-        };
-        println!("{dim_border}│{reset} 🤖 Android Emulator  | {}                             {dim_border}│{reset}", status);
-    } else {
-        println!("{dim_border}│{reset} 🤖 Press 'a' to launch Android Emulator                                {dim_border}│{reset}");
+            println!("  🤖 Press 'a' to launch Android Emulator");
         }
     }
     
     if is_platform_enabled("web") {
-        println!("{dim_border}│{reset} 🌐 Press 'b' to open the Web Shell in your browser                     {dim_border}│{reset}");
+        println!("  🌐 Press 'b' to open the Web Shell in your browser");
     }
+
     let linux = LINUX_LAUNCHED.load(Ordering::SeqCst);
     if is_platform_enabled("linux") {
         if linux {
-        let status = if LINUX_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
-            "\x1B[32m🚀 Connected               \x1B[0m".to_string()
+            let status = if LINUX_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
+                "\x1B[32m🚀 Connected\x1B[0m"
+            } else {
+                "\x1B[33m⏳ compiling native shell...\x1B[0m"
+            };
+            println!("  🐧 Linux GTK4 Shell  | {}", status);
         } else {
-            "\x1B[33m⏳ compiling native shell..\x1B[0m".to_string()
-        };
-        println!("{dim_border}│{reset} 🐧 Linux GTK4 Shell  | {}                             {dim_border}│{reset}", status);
-    } else {
-        println!("{dim_border}│{reset} 🐧 Press 'l' to generate Linux GTK4 shell                              {dim_border}│{reset}");
+            println!("  🐧 Press 'l' to generate Linux GTK4 shell");
         }
     }
     
     let windows = WINDOWS_LAUNCHED.load(Ordering::SeqCst);
     if is_platform_enabled("windows") {
         if windows {
-        let status = if WINDOWS_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
-            "[32m🚀 Connected               [0m".to_string()
-        } else if std::env::consts::OS == "windows" {
-            "[33m⏳ compiling native shell..[0m".to_string()
+            let status = if WINDOWS_COMPILE_TIME.load(Ordering::SeqCst) > 0 {
+                "\x1B[32m🚀 Connected\x1B[0m"
+            } else if std::env::consts::OS == "windows" {
+                "\x1B[33m⏳ compiling native shell...\x1B[0m"
+            } else {
+                "\x1B[33m⏳ Waiting for VM run...\x1B[0m"
+            };
+            println!("  🪟 Windows Shell     | {}", status);
         } else {
-            "[33m⏳ Waiting for VM run...   [0m".to_string()
-        };
-        println!("{dim_border}│{reset} 🪟 Windows WPF Shell | {}                             {dim_border}│{reset}", status);
-    } else {
-        println!("{dim_border}│{reset} 🪟 Press 'w' to generate Windows WPF dev shell                         {dim_border}│{reset}");
+            println!("  🪟 Press 'w' to generate Windows dev shell");
         }
     }
     
     let t = HOT_RELOAD_TIME.load(Ordering::SeqCst);
     if t > 0 {
-        println!("{dim_border}├────────────────────────────────────────────────────────────────────────┤{reset}");
         let time_str = format!("{:.2}s", t as f64 / 1000.0);
-        let time_colored = format!("\x1B[32;1m{}\x1B[0m", time_str);
-        let status = format!("✨ UI Hot Reloaded in {}", time_colored);
-        let visible_len = 22 + time_str.chars().count();
-        let pad = 70_usize.saturating_sub(visible_len);
-        println!("{dim_border}│{reset} {}{} {dim_border}│{reset}", status, " ".repeat(pad));
+        println!("\n  ✨ UI Hot Reloaded in \x1B[32;1m{}\x1B[0m", time_str);
     }
     
-    println!("{dim_border}└────────────────────────────────────────────────────────────────────────┘{reset}\n");
-    
-    println!("› Press 't' to randomize theme colors across all platforms 🎨");
-    println!("› Press 's' to sync theme & icons from NativeKit Cloud ☁️");
+    println!("{divider}");
     println!("› Press 'c' to contribute to the open-source repo");
     println!("› Press 'f' to share feedback");
     println!("› Press 'r' to compile a production release");
