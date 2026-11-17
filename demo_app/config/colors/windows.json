@@ -1,0 +1,12 @@
+{
+  "light": {
+    "accentColor": "#006040",
+    "accentColorHover": "#005236",
+    "accentColorPressed": "#00462E"
+  },
+  "dark": {
+    "accentColor": "#529F7A",
+    "accentColorHover": "#6DBB94",
+    "accentColorPressed": "#368562"
+  }
+}

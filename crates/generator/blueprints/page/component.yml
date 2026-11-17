@@ -1,0 +1,12 @@
+name: Page
+
+rust:
+  accepts_children: true
+  builder:
+    title: String
+    subtitle: String
+    large_title: Bool
+    top_style: String
+    on_back: Action
+    presentation: String
+    section_spacing: u32

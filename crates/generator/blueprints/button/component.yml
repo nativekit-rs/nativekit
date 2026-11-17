@@ -1,0 +1,9 @@
+name: Button
+rust:
+  accepts_children: true
+  builder:
+    variant: String(primary, secondary, text)
+    color: String
+    opacity: u32
+    width: String
+    action: Action

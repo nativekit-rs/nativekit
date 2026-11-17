@@ -1,0 +1,13 @@
+name: Image
+rust:
+  accepts_children: false
+  constructor:
+    src: String
+  builder:
+    alt: String
+    width: u32
+    height: u32
+    size: u32
+    corner_radius: u32
+    content_mode: String(cover, contain)
+    opacity: u32

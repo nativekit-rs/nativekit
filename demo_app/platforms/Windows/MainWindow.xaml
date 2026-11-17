@@ -1,0 +1,62 @@
+<Window
+    x:Class="CargoNativeApp.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:CargoNativeApp">
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="48" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Window TitleBar / Header -->
+        <Grid x:Name="AppTitleBar" Grid.Row="0" VerticalAlignment="Stretch" HorizontalAlignment="Stretch" Background="Transparent">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="WindowBackButton"
+                    Grid.Column="0"
+                    Width="40" Height="36"
+                    Margin="8,6,4,6"
+                    VerticalAlignment="Center"
+                    Background="Transparent"
+                    BorderThickness="0"
+                    CornerRadius="4"
+                    Visibility="Collapsed">
+                <FontIcon Glyph="&#xE72B;" FontSize="14" />
+            </Button>
+
+            <Image x:Name="AppLogoImage"
+                   Grid.Column="1"
+                   Width="18" Height="18"
+                   Margin="10,0,0,0"
+                   VerticalAlignment="Center" />
+
+            <TextBlock x:Name="WindowTitleText"
+                       Grid.Column="2"
+                       Text="My Native Kit App"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Margin="8,0,0,0" />
+        </Grid>
+
+        <!-- Main Content Area -->
+        <Border x:Name="RootContainer"
+                Grid.Row="1"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch" />
+
+        <!-- TitleBar Modal Scrim Overlay -->
+        <Border x:Name="TitleBarScrim"
+                Grid.Row="0"
+                Background="#96000000"
+                Visibility="Collapsed"
+                IsHitTestVisible="False" />
+    </Grid>
+</Window>

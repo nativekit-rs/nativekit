@@ -1,0 +1,7 @@
+{
+  "id": "basic",
+  "name": "Basic Starter",
+  "description": "Minimal single-screen app with reactive state and clean SwiftUI-style syntax",
+  "tier": "free",
+  "order": 1
+}

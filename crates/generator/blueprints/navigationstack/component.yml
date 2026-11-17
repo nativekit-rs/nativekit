@@ -1,0 +1,16 @@
+name: NavigationStack
+
+rust:
+  accepts_children: true
+  builder:
+    current_path: String
+    window_count: u32
+    sheet1_count: u32
+    sheet2_count: u32
+    has_overlay: Bool
+    has_overlay2: Bool
+    has_subroutes: Bool
+    overlay_kind: String
+    top_style: String
+    on_pop: Action
+    on_dismiss: Action

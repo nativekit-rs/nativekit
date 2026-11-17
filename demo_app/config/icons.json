@@ -1,0 +1,231 @@
+{
+  "_defaults": {
+    "ios": {
+      "variant": "none",
+      "rendering": "monochrome"
+    },
+    "android": {
+      "style": "rounded"
+    },
+    "linux": {
+      "style": "symbolic"
+    },
+    "windows": {
+      "style": "regular"
+    },
+    "web": {
+      "style": "outlined"
+    }
+  },
+  "qrcode": {
+    "ios": "qrcode",
+    "android": "qr_code",
+    "linux": "qr-code-symbolic",
+    "windows": "\uED14",
+    "web": "arrow_right"
+  },
+  "coffee": {
+    "ios": "mug",
+    "android": "Coffee",
+    "linux": "emoji-food-symbolic",
+    "windows": "\uEC32",
+    "web": "coffee"
+  },
+  "arrow_right": {
+    "ios": "arrow.right",
+    "android": "ArrowForward",
+    "linux": "go-next-symbolic",
+    "windows": "\uE72A",
+    "web": "arrow_right"
+  },
+  "arrow_left": {
+    "ios": "arrow.left",
+    "android": "ArrowBack",
+    "linux": "go-previous-symbolic",
+    "windows": "\uE72B",
+    "web": "arrow_left"
+  },
+  "navigate_back": {
+    "ios": "chevron.left",
+    "android": "ArrowBack",
+    "linux": "go-previous-symbolic",
+    "windows": "\uE72B",
+    "web": "arrow_left"
+  },
+  "chevron_right": {
+    "ios": "chevron.right",
+    "android": "KeyboardArrowRight",
+    "linux": "go-next-symbolic",
+    "windows": "\uE76C",
+    "web": "chevron_right"
+  },
+  "chevron_left": {
+    "ios": "chevron.left",
+    "android": "KeyboardArrowLeft",
+    "linux": "go-previous-symbolic",
+    "windows": "\uE76B",
+    "web": "chevron_left"
+  },
+  "home": {
+    "ios": "house",
+    "android": "Home",
+    "linux": "go-home-symbolic",
+    "windows": "\uE80F",
+    "web": "home"
+  },
+  "orders": {
+    "ios": "shippingbox",
+    "android": "ShoppingCart",
+    "linux": "package-x-generic-symbolic",
+    "windows": "\uE7BF",
+    "web": "orders"
+  },
+  "cart": {
+    "ios": "cart",
+    "android": "ShoppingCart",
+    "linux": "shopping-cart-symbolic",
+    "windows": "\uE7BF",
+    "web": "cart"
+  },
+  "settings": {
+    "ios": "gearshape",
+    "android": "Settings",
+    "linux": "preferences-system-symbolic",
+    "windows": "\uE713",
+    "web": "settings"
+  },
+  "user": {
+    "ios": "person",
+    "android": "Person",
+    "linux": "avatar-default-symbolic",
+    "windows": "\uE77B",
+    "web": "user"
+  },
+  "search": {
+    "ios": "magnifyingglass",
+    "android": "Search",
+    "linux": "system-search-symbolic",
+    "windows": "\uE721",
+    "web": "search"
+  },
+  "plus": {
+    "ios": "plus",
+    "android": "Add",
+    "linux": "list-add-symbolic",
+    "windows": "\uE710",
+    "web": "plus"
+  },
+  "check": {
+    "ios": "checkmark",
+    "android": "Check",
+    "linux": "object-select-symbolic",
+    "windows": "\uE73E",
+    "web": "check"
+  },
+  "close": {
+    "ios": "xmark",
+    "android": "Close",
+    "linux": "window-close-symbolic",
+    "windows": "\uE711",
+    "web": "close"
+  },
+  "trash": {
+    "ios": "trash",
+    "android": "Delete",
+    "linux": "user-trash-symbolic",
+    "windows": "\uE74D",
+    "web": "trash"
+  },
+  "edit": {
+    "ios": "pencil",
+    "android": "Edit",
+    "linux": "document-edit-symbolic",
+    "windows": "\uE70F",
+    "web": "edit"
+  },
+  "star": {
+    "ios": "star",
+    "android": "Star",
+    "linux": "starred-symbolic",
+    "windows": "\uE734",
+    "web": "star"
+  },
+  "heart": {
+    "ios": "heart",
+    "android": "Favorite",
+    "linux": "./icons/heart.svg",
+    "windows": "\uEB51",
+    "web": "heart"
+  },
+  "bell": {
+    "ios": "bell",
+    "android": "Notifications",
+    "linux": "preferences-system-notifications-symbolic",
+    "windows": "\uEA8F",
+    "web": "bell"
+  },
+  "info": {
+    "ios": "info.circle",
+    "android": "Info",
+    "linux": "dialog-information-symbolic",
+    "windows": "\uE946",
+    "web": "info"
+  },
+  "warning": {
+    "ios": "exclamationmark.triangle",
+    "android": "Warning",
+    "linux": "dialog-warning-symbolic",
+    "windows": "\uE7BA",
+    "web": "warning"
+  },
+  "mail": {
+    "ios": "envelope",
+    "android": "Email",
+    "linux": "mail-unread-symbolic",
+    "windows": "\uE715",
+    "web": "mail"
+  },
+  "lock": {
+    "ios": "lock",
+    "android": "Lock",
+    "linux": "changes-prevent-symbolic",
+    "windows": "\uE72E",
+    "web": "lock"
+  },
+  "share": {
+    "ios": "square.and.arrow.up",
+    "android": "Share",
+    "linux": "emblem-shared-symbolic",
+    "windows": "\uE72D",
+    "web": "share"
+  },
+  "refresh": {
+    "ios": "arrow.clockwise",
+    "android": "Refresh",
+    "linux": "view-refresh-symbolic",
+    "windows": "\uE72C",
+    "web": "refresh"
+  },
+  "sparkles": {
+    "ios": "sparkles",
+    "android": "Star",
+    "linux": "starred-symbolic",
+    "windows": "\uE734",
+    "web": "sparkles"
+  },
+  "bolt": {
+    "ios": "bolt",
+    "android": "Build",
+    "linux": "weather-storm-symbolic",
+    "windows": "\uE945",
+    "web": "bolt"
+  },
+  "check_circle": {
+    "ios": "checkmark.circle",
+    "android": "CheckCircle",
+    "linux": "emblem-ok-symbolic",
+    "windows": "\uE73E",
+    "web": "check_circle"
+  },
+  "brand_spark": "./icons/brand_spark.svg"
+}

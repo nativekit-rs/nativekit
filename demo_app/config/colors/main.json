@@ -1,0 +1,291 @@
+{
+  "primary": {
+    "ios": "accentColor",
+    "android": "primary",
+    "linux": "accent_color",
+    "windows": "SystemAccentColor",
+    "web": "var(--rn-primary)"
+  },
+  "secondary": {
+    "ios": "secondary",
+    "android": "secondary",
+    "linux": "purple_3",
+    "windows": "TextFillColorSecondaryBrush",
+    "web": "var(--rn-secondary)"
+  },
+  "text_primary": {
+    "ios": "label",
+    "android": "onSurface",
+    "linux": "window_fg_color",
+    "windows": "TextFillColorPrimaryBrush",
+    "web": "var(--rn-on-surface)"
+  },
+  "text_secondary": {
+    "ios": "secondaryLabel",
+    "android": "onSurfaceVariant",
+    "linux": {
+      "light": "#5E5C64",
+      "dark": "#C0BFBC"
+    },
+    "windows": "TextFillColorSecondaryBrush",
+    "web": "var(--rn-on-surface-variant)"
+  },
+  "text_tertiary": {
+    "ios": "tertiaryLabel",
+    "android": "outline",
+    "linux": {
+      "light": "#77767B",
+      "dark": "#9A9996"
+    },
+    "windows": "TextFillColorTertiaryBrush",
+    "web": "var(--rn-outline)"
+  },
+  "surface": {
+    "ios": "systemBackground",
+    "android": "surface",
+    "linux": "card_bg_color",
+    "windows": "CardBackgroundFillColorDefaultBrush",
+    "web": "var(--rn-surface)"
+  },
+  "surface_secondary": {
+    "ios": "secondarySystemBackground",
+    "android": "surfaceVariant",
+    "linux": "view_bg_color",
+    "windows": "LayerFillColorDefaultBrush",
+    "web": "var(--rn-surface-container)"
+  },
+  "grouped_background": {
+    "ios": "systemGroupedBackground",
+    "android": "background",
+    "linux": "window_bg_color",
+    "windows": "SolidBackgroundFillColorBaseBrush",
+    "web": "var(--rn-background)"
+  },
+  "fill": {
+    "ios": "secondarySystemFill",
+    "android": "surfaceVariant",
+    "linux": "headerbar_bg_color",
+    "windows": "SubtleFillColorSecondaryBrush",
+    "web": "var(--rn-surface-variant)"
+  },
+  "separator": {
+    "ios": "separator",
+    "android": "outlineVariant",
+    "linux": "shade_color",
+    "windows": "DividerStrokeColorDefaultBrush",
+    "web": "var(--rn-outline-variant)"
+  },
+  "blue": {
+    "ios": "blue",
+    "android": {
+      "light": "#007AFF",
+      "dark": "#0A84FF"
+    },
+    "linux": "blue_3",
+    "windows": "#0078D4",
+    "web": {
+      "light": "#007AFF",
+      "dark": "#0A84FF"
+    }
+  },
+  "red": {
+    "ios": "red",
+    "android": {
+      "light": "#FF3B30",
+      "dark": "#FF453A"
+    },
+    "linux": "red_3",
+    "windows": "#D13438",
+    "web": {
+      "light": "#FF3B30",
+      "dark": "#FF453A"
+    }
+  },
+  "green": {
+    "ios": "green",
+    "android": {
+      "light": "#34C759",
+      "dark": "#30D158"
+    },
+    "linux": "green_3",
+    "windows": "#107C10",
+    "web": {
+      "light": "#34C759",
+      "dark": "#30D158"
+    }
+  },
+  "orange": {
+    "ios": "orange",
+    "android": {
+      "light": "#FF9500",
+      "dark": "#FF9F0A"
+    },
+    "linux": "orange_3",
+    "windows": "#FF8C00",
+    "web": {
+      "light": "#FF9500",
+      "dark": "#FF9F0A"
+    }
+  },
+  "yellow": {
+    "ios": "yellow",
+    "android": {
+      "light": "#FFCC00",
+      "dark": "#FFD60A"
+    },
+    "linux": "yellow_3",
+    "windows": "#FFB900",
+    "web": {
+      "light": "#FFCC00",
+      "dark": "#FFD60A"
+    }
+  },
+  "purple": {
+    "ios": "purple",
+    "android": {
+      "light": "#AF52DE",
+      "dark": "#BF5AF2"
+    },
+    "linux": "purple_3",
+    "windows": "#881798",
+    "web": {
+      "light": "#AF52DE",
+      "dark": "#BF5AF2"
+    }
+  },
+  "pink": {
+    "ios": "pink",
+    "android": {
+      "light": "#FF2D55",
+      "dark": "#FF375F"
+    },
+    "linux": "red_2",
+    "windows": "#E3008C",
+    "web": {
+      "light": "#FF2D55",
+      "dark": "#FF375F"
+    }
+  },
+  "teal": {
+    "ios": "teal",
+    "android": {
+      "light": "#30B0C7",
+      "dark": "#40C8E0"
+    },
+    "linux": "blue_2",
+    "windows": "#00B7C3",
+    "web": {
+      "light": "#30B0C7",
+      "dark": "#40C8E0"
+    }
+  },
+  "indigo": {
+    "ios": "indigo",
+    "android": {
+      "light": "#5856D6",
+      "dark": "#5E5CE6"
+    },
+    "linux": "purple_4",
+    "windows": "#4F46E5",
+    "web": {
+      "light": "#5856D6",
+      "dark": "#5E5CE6"
+    }
+  },
+  "mint": {
+    "ios": "mint",
+    "android": {
+      "light": "#00C7BE",
+      "dark": "#63E6E2"
+    },
+    "linux": "green_2",
+    "windows": "#00CC6A",
+    "web": {
+      "light": "#00C7BE",
+      "dark": "#63E6E2"
+    }
+  },
+  "cyan": {
+    "ios": "cyan",
+    "android": {
+      "light": "#32ADE6",
+      "dark": "#64D2FF"
+    },
+    "linux": "blue_2",
+    "windows": "#0099BC",
+    "web": {
+      "light": "#32ADE6",
+      "dark": "#64D2FF"
+    }
+  },
+  "brown": {
+    "ios": "brown",
+    "android": {
+      "light": "#A2845E",
+      "dark": "#AC8E68"
+    },
+    "linux": "brown_3",
+    "windows": "#8E562E",
+    "web": {
+      "light": "#A2845E",
+      "dark": "#AC8E68"
+    }
+  },
+  "gray": {
+    "ios": "gray",
+    "android": "outline",
+    "linux": "dark_1",
+    "windows": "#8A8886",
+    "web": {
+      "light": "#8E8E93",
+      "dark": "#98989D"
+    }
+  },
+  "danger": {
+    "ios": "red",
+    "android": "error",
+    "linux": "error_color",
+    "windows": "SystemFillColorCriticalBrush",
+    "web": "var(--rn-error)"
+  },
+  "success": {
+    "ios": "green",
+    "android": {
+      "light": "#2E7D32",
+      "dark": "#66BB6A"
+    },
+    "linux": "success_color",
+    "windows": "SystemFillColorSuccessBrush",
+    "web": {
+      "light": "#2E7D32",
+      "dark": "#66BB6A"
+    }
+  },
+  "warning": {
+    "ios": "orange",
+    "android": {
+      "light": "#ED6C02",
+      "dark": "#FFA726"
+    },
+    "linux": "warning_color",
+    "windows": "SystemFillColorCautionBrush",
+    "web": {
+      "light": "#ED6C02",
+      "dark": "#FFA726"
+    }
+  },
+  "white": {
+    "ios": "white",
+    "android": "#FFFFFF",
+    "linux": "light_1",
+    "windows": "#FFFFFF",
+    "web": "#FFFFFF"
+  },
+  "black": {
+    "ios": "black",
+    "android": "#000000",
+    "linux": "dark_5",
+    "windows": "#000000",
+    "web": "#000000"
+  }
+}

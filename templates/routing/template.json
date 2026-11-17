@@ -1,0 +1,7 @@
+{
+  "id": "routing",
+  "name": "Tabs & Navigation",
+  "description": "Multi-page architecture with bottom tabs, drill-in routes, and modal sheets",
+  "tier": "free",
+  "order": 2
+}

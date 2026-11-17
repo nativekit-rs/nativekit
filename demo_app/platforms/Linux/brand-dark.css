@@ -1,0 +1,4 @@
+:root { --accent-bg-color: #529F7A; --accent-color: #529F7A; }
+@define-color accent_color #529F7A;
+@define-color accent_bg_color #529F7A;
+button.suggested-action { background-color: #529F7A; color: #ffffff; }

@@ -1,0 +1,11 @@
+{
+  "switch": {
+    "tint": null
+  },
+  "button": {
+    "tint": null
+  },
+  "icon": {
+    "style": "rounded"
+  }
+}

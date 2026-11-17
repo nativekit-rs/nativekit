@@ -1,0 +1,5 @@
+name: Section
+rust:
+  accepts_children: true
+  builder:
+    spacing: u32

@@ -1,0 +1,26 @@
+/target
+/dist
+.DS_Store
+*.log
+xcuserdata/
+*.xcuserdata/
+.idea/
+local.properties
+
+# No Python in this project
+*.py
+/node_modules
+
+# Native build caches inside permanent demo_app/platforms/
+/demo_app/platforms/iOS/build/
+/demo_app/platforms/iOS/*.a
+/demo_app/platforms/Android/.gradle/
+/demo_app/platforms/Android/build/
+/demo_app/platforms/Android/app/build/
+/demo_app/platforms/Android/app/src/main/jniLibs/
+/demo_app/platforms/Linux/target/
+/demo_app/platforms/Linux/.engine/
+/demo_app/platforms/Windows/bin/
+/demo_app/platforms/Windows/obj/
+/demo_app/platforms/Windows/engine.dll
+/demo_app/platforms/Server/

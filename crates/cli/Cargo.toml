@@ -1,0 +1,19 @@
+[package]
+name = "nativekit-cli"
+version = "0.1.0"
+edition = "2021"
+default-run = "nk"
+description = "NativeKit CLI (nk) — Project scaffolding, sub-second hot reload, and 5-platform builds"
+homepage = "https://nativekit.rs"
+repository = "https://github.com/nativekit-rs/nativekit"
+license = "MIT"
+
+[[bin]]
+name = "nk"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+native-kit = { version = "0.1.0", path = "../framework" }
+walkdir = "2.5.0"

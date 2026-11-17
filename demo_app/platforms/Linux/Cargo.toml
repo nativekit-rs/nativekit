@@ -1,0 +1,21 @@
+[package]
+name = "mynativekitapp"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "MyNativeKitApp"
+path = "src/main.rs"
+
+[workspace]
+
+[dependencies]
+libadwaita = { version = "0.6", features = ["v1_5"] }
+gtk4 = { version = "0.8", package = "gtk4", features = ["v4_8"] }
+serde_json = "1.0"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["json", "blocking", "rustls-tls-webpki-roots"] }
+demo_app = { path = "../../", optional = true, features = ["client"] }
+
+[features]
+prod = ["dep:demo_app"]

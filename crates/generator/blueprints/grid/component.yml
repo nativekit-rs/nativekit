@@ -1,0 +1,6 @@
+name: Grid
+rust:
+  accepts_children: true
+  builder:
+    columns: u32
+    spacing: u32

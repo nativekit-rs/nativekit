@@ -1,0 +1,8 @@
+name: HStack
+rust:
+  accepts_children: true
+  builder:
+    spacing: u32
+    width: String(hug, fill)
+    align: String(top, bottom, center, middle, left, right, space_between)
+    wrap: Bool

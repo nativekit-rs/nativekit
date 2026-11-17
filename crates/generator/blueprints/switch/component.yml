@@ -1,0 +1,7 @@
+name: Switch
+rust:
+  accepts_children: false
+  builder:
+    on_change: Action
+    value: Bool
+    title: String

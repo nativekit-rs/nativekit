@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NativeKit Web</title>
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--rn-background, #ffffff);
+            color: var(--rn-text, #000000);
+            -webkit-font-smoothing: antialiased;
+        }
+        #root {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .hstack { display: flex; flex-direction: row; align-items: center; width: 100%; box-sizing: border-box; }
+        .vstack { display: flex; flex-direction: column; width: 100%; box-sizing: border-box; }
+        .large-title { font-size: 34px; line-height: 41px; }
+        .title-1 { font-size: 28px; line-height: 34px; }
+        .title-2 { font-size: 22px; line-height: 28px; }
+        .title-3 { font-size: 20px; line-height: 25px; }
+        .headline { font-size: 17px; line-height: 22px; }
+        .body { font-size: 17px; line-height: 22px; }
+        .callout { font-size: 16px; line-height: 21px; }
+        .subhead { font-size: 15px; line-height: 20px; }
+        .footnote { font-size: 13px; line-height: 18px; }
+        .caption-1 { font-size: 12px; line-height: 16px; }
+        .caption-2 { font-size: 11px; line-height: 13px; }
+        .weight-thin { font-weight: 100; }
+        .weight-ultralight { font-weight: 200; }
+        .weight-light { font-weight: 300; }
+        .weight-regular { font-weight: 400; }
+        .weight-medium { font-weight: 500; }
+        .weight-semibold { font-weight: 600; }
+        .weight-bold { font-weight: 700; }
+        .weight-heavy { font-weight: 800; }
+        .weight-black { font-weight: 900; }
+        .page-content {
+            padding: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: 500;
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: opacity 0.15s, background-color 0.15s;
+            width: fit-content;
+            align-self: flex-start;
+        }
+        button.fill {
+            width: 100%;
+            align-self: stretch;
+        }
+        button:hover { opacity: 0.88; }
+        button:active { opacity: 0.75; }
+        button.primary {
+            background-color: var(--rn-primary, #007AFF);
+            color: #ffffff;
+        }
+        button.text {
+            background-color: transparent;
+            color: var(--rn-primary, #007AFF);
+            padding: 6px 8px;
+        }
+        .nk-section-row.clickable:hover {
+            background-color: var(--rn-surface-container, rgba(128,128,128,0.08));
+        }
+        button.secondary {
+            background-color: var(--rn-surface, #E5E5EA);
+            color: var(--rn-text, #000000);
+        }
+        @keyframes slide-in-right {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+        @keyframes slide-out-left {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(-20%); opacity: 0.85; }
+        }
+        @keyframes slide-in-left {
+            from { transform: translateX(-20%); opacity: 0.85; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slide-out-right {
+            from { transform: translateX(0); }
+            to { transform: translateX(100%); }
+        }
+
+        html[data-nav-direction="forward"]::view-transition-old(root) {
+            animation: 0.28s cubic-bezier(0.32, 0.72, 0, 1) both slide-out-left;
+        }
+        html[data-nav-direction="forward"]::view-transition-new(root) {
+            animation: 0.28s cubic-bezier(0.32, 0.72, 0, 1) both slide-in-right;
+        }
+        html[data-nav-direction="back"]::view-transition-old(root) {
+            animation: 0.28s cubic-bezier(0.32, 0.72, 0, 1) both slide-out-right;
+            z-index: 10;
+        }
+        html[data-nav-direction="back"]::view-transition-new(root) {
+            animation: 0.28s cubic-bezier(0.32, 0.72, 0, 1) both slide-in-left;
+        }
+        html:not([data-nav-direction="forward"]):not([data-nav-direction="back"])::view-transition-old(root),
+        html:not([data-nav-direction="forward"]):not([data-nav-direction="back"])::view-transition-new(root) {
+            animation-duration: 0.15s;
+        }
+
+        /* Sheet Presentation */
+        .sheet-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.4);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            
+        }
+        .sheet-container {
+            background: var(--rn-background, #ffffff);
+            color: var(--rn-text, #000000);
+            border-radius: 20px 20px 0 0;
+            width: 100%;
+            max-width: 600px;
+            max-height: 85vh;
+            overflow-y: auto;
+            box-shadow: 0 -4px 30px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            
+        }
+        .sheet-handle {
+            width: 36px;
+            height: 5px;
+            border-radius: 3px;
+            background: rgba(120, 120, 128, 0.3);
+            margin: 10px auto 4px auto;
+        }
+        @keyframes sheet-fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes sheet-slide-up {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        /* Form / Dialog Presentation */
+        .dialog-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 24px;
+            
+        }
+        .dialog-container {
+            background: var(--rn-surface, #ffffff);
+            color: var(--rn-text, #000000);
+            border: 1px solid var(--rn-border, rgba(128,128,128,0.2));
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            max-height: 82vh;
+            overflow: hidden;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            
+        }
+        @keyframes dialog-pop-in {
+            from { opacity: 0; transform: scale(0.96) translateY(8px); }
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .page-slide-forward {
+            animation: page-in-right 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .page-slide-back {
+            animation: page-in-left 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        @keyframes page-in-right {
+            from { opacity: 0; transform: translateX(28px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes page-in-left {
+            from { opacity: 0; transform: translateX(-28px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .sheet-backdrop.modal-enter {
+            animation: sheet-fade-in 0.2s ease-out;
+        }
+        .sheet-container.modal-enter {
+            animation: sheet-slide-up 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .dialog-backdrop.modal-enter {
+            animation: sheet-fade-in 0.18s ease-out;
+        }
+        .dialog-container.modal-enter {
+            animation: dialog-pop-in 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script>
+        const API_BASE = (window.location.origin && window.location.origin.startsWith("http")) ? "" : "http://127.0.0.1:5824";
+
+        class DynamicUINode {
+            constructor(name, props, children, inList = false) {
+                this.name = name;
+                this.props = props;
+                this.children = children;
+                this.inList = inList;
+            }
+
+            static decode(bytes, offsetObj, inList = false) {
+                if (offsetObj.val >= bytes.length) return new DynamicUINode("error", {}, [], inList);
+                
+                function readU8() { let v = bytes[offsetObj.val]; offsetObj.val++; return v; }
+                function readU16() { let v = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8); offsetObj.val += 2; return v; }
+                function readU32() { let v = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8) | (bytes[offsetObj.val+2] << 16) | (bytes[offsetObj.val+3] << 24); offsetObj.val += 4; return v; }
+                function readStr() {
+                    let len = readU16();
+                    let str = new TextDecoder("utf-8").decode(bytes.subarray(offsetObj.val, offsetObj.val + len));
+                    offsetObj.val += len;
+                    return str;
+                }
+
+                let type = readU8();
+                if (type === 1) {
+                    let name = readStr().toLowerCase();
+                    let propsCount = readU16();
+                    let props = {};
+                    for (let i = 0; i < propsCount; i++) {
+                        let k = readStr();
+                        let vType = readU8();
+                        if (vType === 0) props[k] = readStr();
+                        else if (vType === 1) props[k] = (readU8() !== 0);
+                        else if (vType === 2) props[k] = readU32();
+                        else if (vType === 3) props[k] = readStr();
+                        else if (vType === 4) props[k] = readStr();
+                        else if (vType === 5) {
+                            let len = readU32();
+                            let str = new TextDecoder("utf-8").decode(bytes.subarray(offsetObj.val, offsetObj.val + len));
+                            try { props[k] = JSON.parse(str); } catch(e) {}
+                            offsetObj.val += len;
+                        }
+                    }
+                    let childrenCount = readU16();
+                    let children = [];
+                    for(let i = 0; i < childrenCount; i++) {
+                        children.push(DynamicUINode.decode(bytes, offsetObj, name === "list"));
+                    }
+                    return new DynamicUINode(name, props, children, inList);
+                } else if (type === 2) {
+                    let len = readU32();
+                    let str = new TextDecoder("utf-8").decode(bytes.subarray(offsetObj.val, offsetObj.val + len));
+                    offsetObj.val += len;
+                    try {
+                        let parsed = JSON.parse(str);
+                        return new DynamicUINode("text", { label: typeof parsed === "string" ? parsed : JSON.stringify(parsed) }, [], inList);
+                    } catch(e) {
+                        return new DynamicUINode("text", { label: str }, [], inList);
+                    }
+                }
+                return new DynamicUINode("error", {}, [], inList);
+            }
+
+            applyPatches(bytes, offsetObj, numPatches) {
+                let currentRoot = this;
+                for (let i = 0; i < numPatches; i++) {
+                    let type = bytes[offsetObj.val]; offsetObj.val++;
+                    let pathLen = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8); offsetObj.val += 2;
+                    let path = [];
+                    for (let j = 0; j < pathLen; j++) {
+                        path.push(bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8));
+                        offsetObj.val += 2;
+                    }
+                    currentRoot = currentRoot.applyPatch(path, 0, type, bytes, offsetObj);
+                }
+                return currentRoot;
+            }
+
+            applyPatch(path, pathIdx, type, bytes, offsetObj) {
+                function readU8() { let v = bytes[offsetObj.val]; offsetObj.val++; return v; }
+                function readU16() { let v = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8); offsetObj.val += 2; return v; }
+                function readU32() { let v = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8) | (bytes[offsetObj.val+2] << 16) | (bytes[offsetObj.val+3] << 24); offsetObj.val += 4; return v; }
+                function readStr() {
+                    let len = readU16();
+                    let str = new TextDecoder("utf-8").decode(bytes.subarray(offsetObj.val, offsetObj.val + len));
+                    offsetObj.val += len;
+                    return str;
+                }
+
+                if (pathIdx === path.length) {
+                    if (type === 0) return DynamicUINode.decode(bytes, offsetObj, this.inList);
+                    else if (type === 1) {
+                        let newProps = { ...this.props };
+                        let propCount = readU16();
+                        for (let i = 0; i < propCount; i++) {
+                            let k = readStr();
+                            let vType = readU8();
+                            if (vType === 0) newProps[k] = readStr();
+                            else if (vType === 1) newProps[k] = (readU8() !== 0);
+                            else if (vType === 2) newProps[k] = readU32();
+                            else if (vType === 3) newProps[k] = readStr();
+                            else if (vType === 4) newProps[k] = readStr();
+                            else if (vType === 5) {
+                                let len = readU32();
+                                let str = new TextDecoder("utf-8").decode(bytes.subarray(offsetObj.val, offsetObj.val + len));
+                                try { newProps[k] = JSON.parse(str); } catch(e) {}
+                                offsetObj.val += len;
+                            }
+                        }
+                        return new DynamicUINode(this.name, newProps, this.children, this.inList);
+                    } else if (type === 2) {
+                        let newChildren = [...this.children];
+                        newChildren.push(DynamicUINode.decode(bytes, offsetObj, this.name === "list"));
+                        return new DynamicUINode(this.name, this.props, newChildren, this.inList);
+                    } else if (type === 3) {
+                        let len = readU16();
+                        let newChildren = [...this.children];
+                        if (len < newChildren.length) newChildren = newChildren.slice(0, len);
+                        return new DynamicUINode(this.name, this.props, newChildren, this.inList);
+                    }
+                    return this;
+                }
+                
+                let childIdx = path[pathIdx];
+                let newChildren = [...this.children];
+                if (childIdx < newChildren.length) {
+                    newChildren[childIdx] = newChildren[childIdx].applyPatch(path, pathIdx + 1, type, bytes, offsetObj);
+                }
+                return new DynamicUINode(this.name, this.props, newChildren, this.inList);
+            }
+        }
+
+
+        let liveUiNode = null;
+
+        function applyB64UI(b64) {
+            const binaryString = atob(b64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            let offsetObj = { val: 0 };
+            if (bytes.length > 0) {
+                let header = bytes[offsetObj.val]; offsetObj.val++;
+                if (header === 0) {
+                    liveUiNode = DynamicUINode.decode(bytes, offsetObj);
+                } else if (header === 1) {
+                    let patchCount = bytes[offsetObj.val] | (bytes[offsetObj.val+1] << 8); offsetObj.val += 2;
+                    if (liveUiNode) {
+                        liveUiNode = liveUiNode.applyPatches(bytes, offsetObj, patchCount);
+                    }
+                }
+            }
+            
+            renderUI();
+        }
+
+        async function dispatch(action, payload) {
+            if (window.wasm_api) {
+                let payloadStr = payload !== undefined && payload !== null ? JSON.stringify(payload) : null;
+                window.wasm_api.dispatch_event(action, payloadStr);
+                fetchUI();
+            } else {
+                try {
+                    const res = await fetch(`${API_BASE}/api/dispatch`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: action, payload: payload })
+                    });
+                    if (res.status === 200) {
+                        const tsHdr = res.headers.get("X-Reload-Timestamp");
+                        if (tsHdr) lastReloadTs = Number(tsHdr) || lastReloadTs;
+                        const b64 = await res.text();
+                        applyB64UI(b64);
+                    } else {
+                        fetchUI();
+                    }
+                } catch (e) {
+                    console.error("dispatch error:", e);
+                }
+            }
+        }
+
+        
+/* BEGIN_COLOR_HELPERS */
+function isInlineWebColor(name) {
+    return Boolean(name && (name.startsWith("#") || name.startsWith("rgb") || name.startsWith("hsl") || name.startsWith("var(")));
+}
+
+function resolveWebColor(name) {
+    if (!name) return "";
+    if (isInlineWebColor(name)) return name;
+    return `var(--nk-color-${name})`;
+}
+
+function applyWebFgColor(el, color) {
+    if (!color) return;
+    if (isInlineWebColor(color)) {
+        el.style.color = color;
+    } else {
+        el.classList.add(`nk-fg-${color}`);
+    }
+}
+
+function applyWebBgColor(el, color) {
+    if (!color) return;
+    if (isInlineWebColor(color)) {
+        el.style.backgroundColor = color;
+    } else {
+        el.classList.add(`nk-bg-${color}`);
+    }
+}
+
+function applyWebContainerStyle(el, node) {
+    if (!node || !node.props) return;
+    if (node.props.spacing !== undefined) el.style.gap = node.props.spacing + "px";
+    if (node.props.padding !== undefined) el.style.padding = node.props.padding + "px";
+    if (node.props.corner_radius !== undefined) el.style.borderRadius = node.props.corner_radius + "px";
+    if (node.props.opacity !== undefined) el.style.opacity = (node.props.opacity / 100.0).toString();
+    if (node.props.background_image) {
+        el.style.backgroundImage = `url("${node.props.background_image}")`;
+        el.style.backgroundSize = "cover";
+        el.style.backgroundPosition = "center";
+        el.style.backgroundRepeat = "no-repeat";
+    } else if (node.props.background_gradient) {
+        const grad = node.props.background_gradient;
+        const gType = grad.type || "linear";
+        const angle = (grad.angle !== undefined) ? grad.angle : 90;
+        const stops = (grad.stops || []).map(s => {
+            const base = resolveWebColor(s.color);
+            const pos = Math.round(((s.position !== undefined) ? s.position : 0) * 100);
+            const op = (s.opacity !== undefined) ? s.opacity : 1.0;
+            const colExpr = (op < 0.999) ? `color-mix(in srgb, ${base} ${Math.round(op * 100)}%, transparent)` : base;
+            return `${colExpr} ${pos}%`;
+        });
+        if (stops.length >= 2) {
+            if (gType === "radial") {
+                el.style.backgroundImage = `radial-gradient(circle, ${stops.join(", ")})`;
+            } else if (gType === "angular" || gType === "conic") {
+                el.style.backgroundImage = `conic-gradient(${stops.join(", ")})`;
+            } else {
+                el.style.backgroundImage = `linear-gradient(${angle}deg, ${stops.join(", ")})`;
+            }
+        }
+    } else if (node.props.background) {
+        applyWebBgColor(el, node.props.background);
+    }
+}
+/* END_COLOR_HELPERS */
+
+
+        let prevWebState = { tabIdx: 0, winDepth: 1, winTitle: "", modalCount: 0, topModalDepth: 0 };
+
+        function findNavStackNode(node) {
+            if (!node) return null;
+            if (node.name === "navigationstack") return node;
+            if (node.children) {
+                for (const c of node.children) {
+                    const found = findNavStackNode(c);
+                    if (found) return found;
+                }
+            }
+            return null;
+        }
+
+        function extractNavLayers(navNode) {
+            const windowPages = [];
+            const modalLayers = [];
+            if (!navNode || !navNode.children || navNode.children.length === 0) {
+                return { windowPages, modalLayers };
+            }
+            const hasOverlay = Boolean(navNode.props && navNode.props.has_overlay);
+            const windowCount = Math.min(
+                navNode.children.length,
+                (navNode.props && typeof navNode.props.window_count === "number")
+                    ? navNode.props.window_count
+                    : (hasOverlay ? Math.max(1, navNode.children.length - 1) : navNode.children.length)
+            );
+            for (let i = 0; i < windowCount; i++) windowPages.push(navNode.children[i]);
+
+            const defaultPop = (navNode.props && navNode.props.on_pop) || "";
+            const defaultDismiss = (navNode.props && navNode.props.on_dismiss) || defaultPop;
+
+            let curNav = navNode;
+            let curWinCount = windowCount;
+            let curHasOverlay = hasOverlay;
+
+            while (curHasOverlay && curNav.children && curNav.children.length > curWinCount) {
+                const kind = (curNav.props && curNav.props.overlay_kind) || "sheet";
+                const onPop = (curNav.props && curNav.props.on_pop) || defaultPop;
+                const onDismiss = (curNav.props && curNav.props.on_dismiss) || defaultDismiss || onPop;
+                const firstOverlay = curNav.children[curWinCount];
+
+                if (firstOverlay.name === "navigationstack") {
+                    const nextHasOverlay = Boolean(firstOverlay.props && firstOverlay.props.has_overlay);
+                    const nextCount = firstOverlay.children ? firstOverlay.children.length : 0;
+                    const nextWinCount = Math.min(
+                        nextCount,
+                        (firstOverlay.props && typeof firstOverlay.props.window_count === "number")
+                            ? firstOverlay.props.window_count
+                            : (nextHasOverlay ? Math.max(1, nextCount - 1) : nextCount)
+                    );
+                    const pages = [];
+                    for (let i = 0; i < nextWinCount; i++) pages.push(firstOverlay.children[i]);
+                    const layerPop = (firstOverlay.props && firstOverlay.props.on_pop) || onPop;
+                    const layerDismiss = (firstOverlay.props && firstOverlay.props.on_dismiss) || onDismiss;
+                    if (pages.length > 0) {
+                        modalLayers.push({ pages, kind, onPop: layerPop, onDismiss: layerDismiss });
+                    }
+                    curNav = firstOverlay;
+                    curWinCount = nextWinCount;
+                    curHasOverlay = nextHasOverlay;
+                } else {
+                    const pages = curNav.children.slice(curWinCount);
+                    if (pages.length > 0) {
+                        modalLayers.push({ pages, kind, onPop, onDismiss });
+                    }
+                    break;
+                }
+            }
+            return { windowPages, modalLayers };
+        }
+
+        function renderNavigationStack(node) {
+            const el = document.createElement("div");
+            el.classList.add("navigationstack");
+            el.style.cssText = "width:100%;height:100%;display:flex;flex-direction:column;position:relative;overflow:hidden;";
+
+            const { windowPages, modalLayers } = extractNavLayers(node);
+            const winDepth = windowPages.length;
+            const activeWin = winDepth > 0 ? windowPages[winDepth - 1] : null;
+            const winTitle = (activeWin && activeWin.props && activeWin.props.title) || "";
+
+            if (activeWin) {
+                const pageEl = renderNode(activeWin);
+                if (winDepth !== prevWebState.winDepth && modalLayers.length === 0) {
+                    pageEl.classList.add(winDepth > prevWebState.winDepth ? "page-slide-forward" : "page-slide-back");
+                }
+                el.appendChild(pageEl);
+            }
+
+            modalLayers.forEach((layer, idx) => {
+                const isForm = ["form", "dialog", "modal", "fullscreen"].includes(layer.kind);
+                const isNewlyOpenedLayer = (idx >= prevWebState.modalCount);
+                const backdrop = document.createElement("div");
+                backdrop.className = (isForm ? "dialog-backdrop" : "sheet-backdrop") + (isNewlyOpenedLayer ? " modal-enter" : "");
+                backdrop.style.zIndex = String(1000 + idx * 100);
+                backdrop.addEventListener("click", (e) => {
+                    if (e.target === backdrop && layer.onDismiss) {
+                        dispatch(layer.onDismiss, null);
+                    }
+                });
+
+                const container = document.createElement("div");
+                container.className = (isForm ? "dialog-container" : "sheet-container") + (isNewlyOpenedLayer ? " modal-enter" : "");
+                if (!isForm) {
+                    const handle = document.createElement("div");
+                    handle.className = "sheet-handle";
+                    container.appendChild(handle);
+                }
+
+                const topModalPage = layer.pages[layer.pages.length - 1];
+                const modalEl = renderNode(topModalPage);
+                const isTopLayer = (idx === modalLayers.length - 1);
+                if (isTopLayer && modalLayers.length === prevWebState.modalCount && layer.pages.length !== prevWebState.topModalDepth) {
+                    modalEl.classList.add(layer.pages.length > prevWebState.topModalDepth ? "page-slide-forward" : "page-slide-back");
+                }
+                container.appendChild(modalEl);
+                backdrop.appendChild(container);
+                el.appendChild(backdrop);
+            });
+
+            prevWebState.winDepth = winDepth;
+            prevWebState.winTitle = winTitle;
+            prevWebState.modalCount = modalLayers.length;
+            prevWebState.topModalDepth = modalLayers.length > 0 ? modalLayers[modalLayers.length - 1].pages.length : 0;
+
+            return el;
+        }
+
+        
+        // React-style declarative DOM helper: h("div", { className: "vstack", style: {...}, onClick: fn }, children)
+        function h(tag, props, children) {
+            const el = document.createElement(tag);
+            if (props) {
+                if (props.className) el.className = props.className;
+                if (props.style) Object.assign(el.style, props.style);
+                if (props.attrs) {
+                    for (const [k, v] of Object.entries(props.attrs)) {
+                        if (v !== undefined && v !== null) el.setAttribute(k, v);
+                    }
+                }
+                if (props.containerStyle) applyWebContainerStyle(el, props.containerStyle);
+                if (props.fgColor) applyWebFgColor(el, props.fgColor);
+                if (props.bgColor) applyWebBgColor(el, props.bgColor);
+                if (props.onClick) el.addEventListener("click", props.onClick);
+                if (props.onChange) el.addEventListener("change", props.onChange);
+                if (props.onInput) el.addEventListener("input", props.onInput);
+                if (props.html !== undefined) el.innerHTML = props.html;
+                if (props.text !== undefined) el.textContent = props.text;
+            }
+            if (Array.isArray(children)) {
+                children.forEach(c => { if (c) el.appendChild(c); });
+            } else if (children) {
+                el.appendChild(children);
+            }
+            return el;
+        }
+
+        
+        // JSX-style tagged template engine: html`<div class="${cls}" onclick=${fn}>${children}</div>`
+        function html(strings, ...values) {
+            let out = "";
+            const events = [];
+            const slots = [];
+            for (let i = 0; i < strings.length; i++) {
+                let s = strings[i];
+                if (i < values.length) {
+                    const val = values[i];
+                    const evtMatch = s.match(/\bon([a-zA-Z]+)=\s*$/);
+                    if (evtMatch && typeof val === "function") {
+                        const evtName = evtMatch[1].toLowerCase();
+                        const evtId = events.length;
+                        events.push({ id: evtId, name: evtName, fn: val });
+                        s = s.slice(0, evtMatch.index) + `data-nk-evt-${evtId}="${evtName}"`;
+                        out += s;
+                    } else if (val instanceof Node || Array.isArray(val)) {
+                        const slotId = slots.length;
+                        slots.push(val);
+                        out += s + `<template data-nk-slot="${slotId}"></template>`;
+                    } else if (val === null || val === undefined || val === false) {
+                        out += s;
+                    } else {
+                        out += s + String(val);
+                    }
+                } else {
+                    out += s;
+                }
+            }
+            const tpl = document.createElement("template");
+            tpl.innerHTML = out.trim();
+            const rootEl = tpl.content.firstElementChild || document.createElement("div");
+            for (const ev of events) {
+                const attr = `data-nk-evt-${ev.id}`;
+                const target = rootEl.hasAttribute(attr) ? rootEl : rootEl.querySelector(`[${attr}]`);
+                if (target) {
+                    target.removeAttribute(attr);
+                    target.addEventListener(ev.name, ev.fn);
+                }
+            }
+            for (let id = 0; id < slots.length; id++) {
+                const marker = rootEl.querySelector(`template[data-nk-slot="${id}"]`);
+                if (marker) {
+                    const item = slots[id];
+                    if (Array.isArray(item)) {
+                        item.forEach(child => { if (child instanceof Node) marker.parentNode.insertBefore(child, marker); });
+                    } else if (item instanceof Node) {
+                        marker.parentNode.insertBefore(item, marker);
+                    }
+                    marker.remove();
+                }
+            }
+            return rootEl;
+        }
+
+        function renderChildren(node) {
+            return (node && node.children) ? node.children.map(c => renderNode(c)) : [];
+        }
+
+        function morphNode(oldEl, node) {
+            if (!oldEl || oldEl.nodeType !== 1) return renderNode(node);
+
+            if (node.name === "tabbar") {
+                if (!oldEl.classList.contains("tabbar-container")) return renderNode(node);
+                const contentEl = oldEl.querySelector(":scope > .tabbar-content");
+                if (contentEl && node.children && node.children.length > 0) {
+                    if (contentEl.children.length > 0) {
+                        const morphed = morphNode(contentEl.children[0], node.children[0]);
+                        if (morphed !== contentEl.children[0]) {
+                            contentEl.replaceChild(morphed, contentEl.children[0]);
+                        }
+                    } else {
+                        contentEl.appendChild(renderNode(node.children[0]));
+                    }
+                }
+                const navEl = oldEl.querySelector(":scope > .tabbar-bottom-nav");
+                const activeIndex = (node.props && node.props.active_index) || 0;
+                if (navEl) {
+                    const tabBtns = navEl.querySelectorAll(".tab-item");
+                    let tabs = (node.props && node.props.tabs) || [];
+                    if (typeof tabs === "string") {
+                        try { tabs = JSON.parse(tabs); } catch(e) { tabs = []; }
+                    }
+                    tabBtns.forEach((btn, idx) => {
+                        const isSelected = (idx === activeIndex);
+                        btn.style.color = isSelected ? 'var(--primary-color, #007aff)' : '#8e8e93';
+                        btn.style.fontWeight = isSelected ? '600' : '400';
+                        const tab = tabs[idx];
+                        if (tab) {
+                            btn.innerHTML = `${getTabSvg(tab.icon || "star", isSelected)}<span>${tab.title || ''}</span>`;
+                        }
+                    });
+                }
+                return oldEl;
+            }
+            
+            if (node.name === "navigationstack") {
+                if (!oldEl.classList.contains("navigationstack")) return renderNode(node);
+                const hasOverlay = (node.props && node.props.has_overlay) || false;
+                const windowCount = Math.min(
+                    node.children ? node.children.length : 0,
+                    (node.props && typeof node.props.window_count === "number")
+                        ? node.props.window_count
+                        : (hasOverlay ? Math.max(1, node.children.length - 1) : node.children.length)
+                );
+                const windowPages = node.children ? node.children.slice(0, windowCount) : [];
+                const overlayPages = node.children ? node.children.slice(windowCount) : [];
+
+                if (windowPages.length > 0) {
+                    const activePageNode = windowPages[windowPages.length - 1];
+                    let pageEl = oldEl.querySelector(":scope > .page");
+                    if (pageEl) {
+                        const morphedPage = morphNode(pageEl, activePageNode);
+                        if (morphedPage !== pageEl) {
+                            oldEl.replaceChild(morphedPage, pageEl);
+                        }
+                    } else {
+                        oldEl.appendChild(renderNode(activePageNode));
+                    }
+                }
+                
+                let existingBackdrop = oldEl.querySelector(":scope > .sheet-backdrop");
+                if (overlayPages.length > 0) {
+                    const topOverlay = overlayPages[overlayPages.length - 1];
+                    if (existingBackdrop) {
+                        let container = existingBackdrop.querySelector(".sheet-container");
+                        if (container && container.children.length > 1) {
+                            const morphedOverlay = morphNode(container.children[1], topOverlay);
+                            if (morphedOverlay !== container.children[1]) {
+                                container.replaceChild(morphedOverlay, container.children[1]);
+                            }
+                        }
+                    } else {
+                        const backdrop = document.createElement("div");
+                        backdrop.classList.add("sheet-backdrop");
+                        backdrop.addEventListener("click", (e) => {
+                            if (e.target === backdrop) {
+                                const onDismiss = (node.props && node.props.on_dismiss) || (node.props && node.props.on_pop);
+                                if (onDismiss) dispatch(onDismiss, null);
+                            }
+                        });
+                        const container = document.createElement("div");
+                        container.classList.add("sheet-container");
+                        const handle = document.createElement("div");
+                        handle.classList.add("sheet-handle");
+                        container.appendChild(handle);
+                        container.appendChild(renderNode(topOverlay));
+                        backdrop.appendChild(container);
+                        oldEl.appendChild(backdrop);
+                    }
+                } else if (existingBackdrop) {
+                    oldEl.removeChild(existingBackdrop);
+                }
+                
+                return oldEl;
+            }
+
+            if (node.name === "page") {
+                if (!oldEl.classList.contains("page")) return renderNode(node);
+                const freshPage = renderNode(node);
+                const oldNav = oldEl.querySelector(".native-navbar");
+                const newNav = freshPage.querySelector(".native-navbar");
+                if (oldNav && newNav) oldEl.replaceChild(newNav, oldNav);
+
+                const contentEl = oldEl.querySelector(".page-content");
+                if (contentEl && node.children) {
+                    const childNodes = node.children.filter(c => c.name !== "toolbartop" && c.name !== "toolbarbottom");
+                    for (let i = 0; i < childNodes.length; i++) {
+                        if (i < contentEl.children.length) {
+                            const morphed = morphNode(contentEl.children[i], childNodes[i]);
+                            if (morphed !== contentEl.children[i]) {
+                                contentEl.replaceChild(morphed, contentEl.children[i]);
+                            }
+                        } else {
+                            contentEl.appendChild(renderNode(childNodes[i]));
+                        }
+                    }
+                    while (contentEl.children.length > childNodes.length) {
+                        contentEl.removeChild(contentEl.lastChild);
+                    }
+                }
+                return oldEl;
+            }
+            
+            if (node.name === "textinput") {
+                if (oldEl.tagName.toLowerCase() !== "input") return renderNode(node);
+                const { value = "", placeholder = "", on_change = "" } = node.props || {};
+                oldEl.__action = on_change;
+                if (oldEl.placeholder !== placeholder) oldEl.placeholder = placeholder;
+                if (document.activeElement !== oldEl && oldEl.value !== value) {
+                    oldEl.value = value;
+                    oldEl.__lastSent = value;
+                }
+                return oldEl;
+            }
+            if (node.name === "image") {
+                if (oldEl.tagName.toLowerCase() !== "img") return renderNode(node);
+                const { src = "" } = node.props || {};
+                if (oldEl.getAttribute("src") !== src) oldEl.setAttribute("src", src);
+                return oldEl;
+            }
+            let expectedTag = "div";
+            if (node.name === "text" || node.name === "icon") expectedTag = "span";
+            if (node.name === "button") expectedTag = "button";
+            
+            if (oldEl.tagName.toLowerCase() !== expectedTag) {
+                return renderNode(node);
+            }
+            
+            if (node.name === "button") {
+                const variant = (node.props && node.props.variant) || "";
+                const color = (node.props && node.props.color) || "";
+                const opacity = (node.props && node.props.opacity !== undefined) ? (node.props.opacity / 100.0) : 1.0;
+                const widthProp = (node.props && node.props.width) || "";
+                oldEl.className = "";
+                if (variant === "primary") oldEl.classList.add("primary");
+                else if (variant === "secondary") oldEl.classList.add("secondary");
+                else oldEl.classList.add("text");
+                if (widthProp === "fill") {
+                    oldEl.classList.add("fill");
+                    oldEl.style.width = "100%";
+                    oldEl.style.alignSelf = "stretch";
+                } else {
+                    oldEl.classList.remove("fill");
+                    oldEl.style.width = "fit-content";
+                    oldEl.style.alignSelf = "flex-start";
+                }
+                if (color) {
+                    if (variant === "primary") oldEl.classList.add(`nk-bg-${color}`);
+                    else oldEl.classList.add(`nk-fg-${color}`);
+                }
+                oldEl.style.opacity = opacity < 1.0 ? opacity.toString() : "";
+                
+                const action = (node.props && node.props.action) || "";
+                oldEl.__action = action;
+                if (!oldEl.__hasListener) {
+                    oldEl.addEventListener("click", () => {
+                        if (oldEl.__action) dispatch(oldEl.__action, null);
+                    });
+                    oldEl.__hasListener = true;
+                }
+                const childNodes = node.children || [];
+                for (let i = 0; i < childNodes.length; i++) {
+                    if (i < oldEl.children.length) {
+                        const morphed = morphNode(oldEl.children[i], childNodes[i]);
+                        if (morphed !== oldEl.children[i]) {
+                            oldEl.replaceChild(morphed, oldEl.children[i]);
+                        }
+                    } else {
+                        oldEl.appendChild(renderNode(childNodes[i]));
+                    }
+                }
+                while (oldEl.children.length > childNodes.length) {
+                    oldEl.removeChild(oldEl.lastChild);
+                }
+                return oldEl;
+            } else if (node.name === "text" || node.name === "icon") {
+                return renderNode(node);
+            } else if (node.name === "vstack") {
+                oldEl.className = "vstack";
+                oldEl.removeAttribute("style");
+                applyWebContainerStyle(oldEl, node);
+            } else if (node.name === "hstack") {
+                oldEl.className = "hstack";
+                oldEl.removeAttribute("style");
+                applyWebContainerStyle(oldEl, node);
+            }
+            
+            const childNodes = node.children || [];
+            for (let i = 0; i < childNodes.length; i++) {
+                if (i < oldEl.children.length) {
+                    const morphed = morphNode(oldEl.children[i], childNodes[i]);
+                    if (morphed !== oldEl.children[i]) {
+                        oldEl.replaceChild(morphed, oldEl.children[i]);
+                    }
+                } else {
+                    oldEl.appendChild(renderNode(childNodes[i]));
+                }
+            }
+            while (oldEl.children.length > childNodes.length) {
+                oldEl.removeChild(oldEl.lastChild);
+            }
+            
+            return oldEl;
+        }
+
+        function renderNode(node) {
+            switch(node.name) {
+/* BEGIN_PRIMITIVES */
+case "button": {
+    const { variant = "", action = "", color = "", opacity = 100, width = "" } = node.props || {};
+        const isFill = width === "fill";
+        const el = h("button", {
+            className: variant === "primary" ? "primary" : (variant === "secondary" ? "secondary" : "text"),
+            fgColor: (color && variant !== "primary") ? color : "",
+            bgColor: (color && variant === "primary") ? color : "",
+            style: {
+                width: isFill ? "100%" : "fit-content",
+                alignSelf: isFill ? "stretch" : "flex-start",
+                flex: isFill ? "1" : "none",
+                opacity: opacity < 100 ? String(opacity / 100.0) : "",
+            },
+            onClick: () => { if (el.__action) dispatch(el.__action, null); },
+        }, renderChildren(node));
+        el.__action = action;
+        el.__hasListener = true;
+        return el;
+}
+
+
+        case "text": {
+            const label = (node.props && node.props.label) || "";
+            const style = (node.props && node.props.style) || "body";
+            const emphasized = (node.props && node.props.emphasized) || false;
+            const color = (node.props && node.props.color) || "";
+            const opacity = (node.props && node.props.opacity !== undefined) ? (node.props.opacity / 100.0) : 1.0;
+            const el = document.createElement("span");
+            switch (style) {
+        case "body": el.classList.add("body", emphasized ? "weight-semibold" : "weight-regular"); break;
+        case "caption1": el.classList.add("caption-1", emphasized ? "weight-semibold" : "weight-regular"); break;
+        case "caption2": el.classList.add("caption-2", emphasized ? "weight-semibold" : "weight-regular"); break;
+        case "footnote": el.classList.add("footnote", emphasized ? "weight-semibold" : "weight-regular"); break;
+        case "headline": el.classList.add("headline", emphasized ? "weight-semibold" : "weight-semibold"); break;
+        case "large_title": el.classList.add("large-title", emphasized ? "weight-bold" : "weight-regular"); break;
+        case "subhead": el.classList.add("subhead", emphasized ? "weight-semibold" : "weight-regular"); break;
+        case "title1": el.classList.add("title-1", emphasized ? "weight-bold" : "weight-regular"); break;
+        case "title2": el.classList.add("title-2", emphasized ? "weight-bold" : "weight-regular"); break;
+        case "title3": el.classList.add("title-3", emphasized ? "weight-semibold" : "weight-regular"); break;
+                default:
+                    el.classList.add("body", emphasized ? "weight-semibold" : "weight-regular");
+                    break;
+            }
+            applyWebFgColor(el, color);
+            if (opacity < 1.0) el.style.opacity = opacity.toString();
+            el.textContent = label;
+            return el;
+        }
+
+
+        case "icon": {
+            const iconKey = (node.props && (node.props.web_icon || node.props.name)) || "sparkles";
+            const color = (node.props && node.props.color) || "";
+            const size = (node.props && node.props.size) || 20;
+            const opacity = (node.props && node.props.opacity !== undefined) ? (node.props.opacity / 100.0) : 1.0;
+            const el = document.createElement("span");
+            el.classList.add("nk-icon");
+            el.style.display = "inline-flex";
+            el.style.alignItems = "center";
+            el.style.justifyContent = "center";
+            el.style.width = size + "px";
+            el.style.height = size + "px";
+            applyWebFgColor(el, color);
+            if (opacity < 1.0) el.style.opacity = opacity.toString();
+            switch (iconKey) {
+                case "arrow_left": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "arrow_right": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "bell": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "bolt": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="currentColor"/></svg>`; break;
+                case "brand_spark": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M12 2L14.8 9.2L22 12L14.8 14.8L12 22L9.2 14.8L2 12L9.2 9.2L12 2Z"/>
+</svg>
+`; break;
+                case "cart": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M6 6h15l-1.5 9h-12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/><path d="M3 3h2l1 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>`; break;
+                case "check": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "check_circle": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>`; break;
+                case "chevron_left": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "chevron_right": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "close": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`; break;
+                case "coffee": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" fill="currentColor"/></svg>`; break;
+                case "edit": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "heart": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill="currentColor"/></svg>`; break;
+                case "home": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "info": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M12 16v-4M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`; break;
+                case "lock": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 11V7a4 4 0 0 1 8 0v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>`; break;
+                case "mail": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M3 7l9 6 9-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "navigate_back": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M19 12H5M11 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "orders": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M6 6h15l-1.5 9h-12z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><circle cx="9" cy="19" r="1.5" fill="currentColor"/><circle cx="17" cy="19" r="1.5" fill="currentColor"/><path d="M3 3h2l1 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>`; break;
+                case "plus": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`; break;
+                case "qrcode": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "refresh": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M21 12a9 9 0 1 1-2.64-6.36L21 8M21 3v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "search": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2" fill="none"/><path d="M20 20l-4.2-4.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`; break;
+                case "settings": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.604.852.997 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>`; break;
+                case "share": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7M16 6l-4-4-4 4M12 2v13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "sparkles": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 2L14.6 9.4L22 12L14.6 14.6L12 22L9.4 14.6L2 12L9.4 9.4L12 2Z" fill="currentColor"/></svg>`; break;
+                case "star": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" fill="currentColor"/></svg>`; break;
+                case "trash": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                case "user": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M4 20c1.8-3.6 5-5.5 8-5.5s6.2 1.9 8 5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/></svg>`; break;
+                case "warning": el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>`; break;
+                default:
+                    el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>`;
+                    break;
+            }
+            const svgEl = el.querySelector("svg");
+            if (svgEl) {
+                svgEl.setAttribute("width", size);
+                svgEl.setAttribute("height", size);
+            }
+            return el;
+        }
+
+
+case "hstack": {
+    const p = node.props || {};
+        const isHdr = Boolean(p.is_header_bar);
+        const widthProp = p.width || "";
+        const alignX = p.align_x || "left";
+        const alignY = p.align_y || "center";
+        const isWrap = Boolean(p.wrap);
+        const isSpaceBetween = alignX === "space_between" || (isHdr && (node.children || []).length === 2);
+        const hasFlex = (node.children || []).some(c => {
+            const cw = (c.props && c.props.width) || "";
+            return cw === "fill" || (c.name === "spacer" && !((c.props && c.props.size) > 0)) || (c.name === "vstack" && cw !== "hug");
+        });
+        const isFill = widthProp === "fill" || (widthProp !== "hug" && (hasFlex || isSpaceBetween));
+        const el = document.createElement("div");
+        el.classList.add("hstack");
+        applyWebContainerStyle(el, node);
+        el.style.width = isFill ? "100%" : "fit-content";
+        el.style.flexWrap = isWrap ? "wrap" : "nowrap";
+        el.style.alignItems = alignY === "top" ? "flex-start" : (alignY === "bottom" ? "flex-end" : "center");
+        el.style.justifyContent = isSpaceBetween ? "space-between" : (alignX === "center" ? "center" : (alignX === "right" ? "flex-end" : "flex-start"));
+        if (node.children) {
+            node.children.forEach(c => {
+                const childEl = renderNode(c);
+                const cw = (c.props && c.props.width) || "";
+                if (cw === "fill" || (c.name === "vstack" && cw !== "hug" && !isSpaceBetween)) {
+                    childEl.style.flex = "1 1 0%";
+                }
+                el.appendChild(childEl);
+            });
+        }
+        return el;
+}
+
+
+case "vstack": {
+    const p = node.props || {};
+        const widthProp = p.width || "";
+        const alignX = p.align_x || "left";
+        const alignY = p.align_y || "top";
+        const isFill = widthProp !== "hug";
+        const el = document.createElement("div");
+        el.classList.add("vstack");
+        applyWebContainerStyle(el, node);
+        el.style.width = isFill ? "100%" : "fit-content";
+        el.style.alignItems = alignX === "center" ? "center" : (alignX === "right" ? "flex-end" : "stretch");
+        el.style.justifyContent = alignY === "space_between" ? "space-between" : (alignY === "center" ? "center" : (alignY === "bottom" ? "flex-end" : "flex-start"));
+        if (node.children) node.children.forEach(c => el.appendChild(renderNode(c)));
+        return el;
+}
+
+
+case "switch": {
+    const { on_change = "", value = false } = node.props || {};
+        const el = h("input", {
+            attrs: { type: "checkbox" },
+            onChange: (e) => { if (on_change) dispatch(on_change, e.target.checked); },
+        });
+        el.checked = Boolean(value);
+        return el;
+}
+
+
+case "navigationstack": {
+    return renderNavigationStack(node);
+}
+
+
+case "page": {
+    const { title = "", subtitle = "", on_back = "", presentation = "push", top_style = "soft", section_spacing = 16 } = node.props || {};
+        const isForm = ["form", "dialog", "modal", "fullscreen"].includes(presentation);
+        const children = node.children || [];
+        const toolbarNode = children.find(c => c.name === "toolbartop");
+        const toolbarItems = (toolbarNode && toolbarNode.children) ? toolbarNode.children : [];
+        const getPlacement = (item) => (item.props && item.props.placement) || (item.children && item.children[0] && item.children[0].props && item.children[0].props.placement) || "trailing";
+        const leadingItems = toolbarItems.filter(i => getPlacement(i) === "leading").map(i => renderNode(i));
+        const trailingItems = toolbarItems.filter(i => getPlacement(i) !== "leading").map(i => renderNode(i));
+        const bodyChildren = children.filter(c => c.name !== "toolbartop" && c.name !== "toolbarbottom").map(c => renderNode(c));
+    
+        const backBtn = (leadingItems.length === 0 && on_back) ? h("button", {
+            className: "back-button",
+            html: isForm ? "&#10005;" : "&#8592; Back",
+            style: { background: "none", border: "none", color: "var(--rn-primary, #007aff)", cursor: "pointer", fontSize: "15px" },
+            onClick: () => dispatch(on_back, null),
+        }) : null;
+    
+        const navbar = h("nav", {
+            className: "native-navbar",
+            style: {
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                minHeight: "44px",
+                background: top_style === "hard" ? "var(--rn-surface, #ffffff)" : "transparent",
+                borderBottom: top_style === "hard" ? "1px solid var(--rn-border, #e5e5ea)" : "none",
+            },
+        }, [
+            h("div", { style: { display: "flex", alignItems: "center", gap: "8px", minWidth: "80px" } }, leadingItems.length > 0 ? leadingItems : backBtn),
+            h("div", { style: { textAlign: "center", flex: "1" } }, [
+                h("div", { className: "page-title", text: title, style: { fontWeight: "600", fontSize: "17px" } }),
+                subtitle ? h("div", { text: subtitle, style: { fontSize: "12px", color: "gray" } }) : null,
+            ]),
+            h("div", { style: { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "8px", minWidth: "80px" } }, trailingItems),
+        ]);
+    
+        const content = h("div", {
+            className: "page-content",
+            style: { flex: "1", overflowY: "auto", padding: "16px", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: `${section_spacing}px` },
+        }, bodyChildren);
+    
+        return h("div", {
+            className: "page",
+            style: { display: "flex", flexDirection: "column", width: "100%", height: "100%" },
+        }, [navbar, content]);
+}
+
+
+case "textinput": {
+    const { value = "", placeholder = "", on_change = "" } = node.props || {};
+        const el = h("input", {
+            className: "nk-textinput",
+            attrs: { type: "text", placeholder: placeholder, value: value },
+            style: {
+                width: "100%",
+                padding: "10px 12px",
+                fontSize: "15px",
+                borderRadius: "10px",
+                border: "1px solid var(--rn-outline-variant, #d1d1d6)",
+                backgroundColor: "var(--rn-surface, #ffffff)",
+                color: "var(--rn-text, #000000)",
+                outline: "none",
+                boxSizing: "border-box",
+            },
+            onInput: (e) => {
+                const newVal = e.target.value;
+                if (el.__action && newVal !== el.__lastSent) {
+                    el.__lastSent = newVal;
+                    dispatch(el.__action, { value: newVal });
+                }
+            },
+        });
+        el.value = value;
+        el.__lastSent = value;
+        el.__action = on_change;
+        return el;
+}
+
+
+case "image": {
+    const { src = "", alt = "", width = 0, height = 0, size = 0, corner_radius = 0, content_mode = "cover", opacity = 100 } = node.props || {};
+        const finalW = width || size;
+        const finalH = height || size || 180;
+        return h("img", {
+            className: "nk-image",
+            attrs: { src: src, alt: alt, loading: "lazy" },
+            style: {
+                width: finalW > 0 ? `${finalW}px` : "100%",
+                height: `${finalH}px`,
+                objectFit: (content_mode === "contain" || content_mode === "fit") ? "contain" : "cover",
+                borderRadius: corner_radius > 0 ? `${corner_radius}px` : "0px",
+                opacity: opacity < 100 ? String(opacity / 100.0) : "1",
+                display: "block",
+                flexShrink: "0",
+            },
+        });
+}
+
+
+case "toolbartop": {
+    return h("div", { className: "toolbartop", style: { display: "inline-flex", alignItems: "center", gap: "6px" } }, renderChildren(node));
+}
+
+
+case "section": {
+    const children = node.children || [];
+        const hdrNode = children.find(c => c.name === "section_header");
+        const ftrNode = children.find(c => c.name === "section_footer");
+        const bodyChildren = children.filter(c => c.name !== "section_header" && c.name !== "section_footer");
+        const rows = bodyChildren.map((child, idx, arr) => {
+            const isLast = idx === arr.length - 1;
+            const isBtn = child.name === "button";
+            const isPicker = Boolean(child.props && child.props.is_picker);
+            const act = (child.props && child.props.action) || "";
+            const col = (child.props && child.props.color) || (isBtn && !isPicker ? "primary" : "");
+            const rowBg = (child.props && child.props.background) || "";
+            const rowGrad = (child.props && child.props.background_gradient) || null;
+            const hasRowBg = Boolean(rowBg || rowGrad);
+            const cleanChild = hasRowBg
+                ? { ...child, props: Object.fromEntries(Object.entries(child.props || {}).filter(([k]) => k !== "background" && k !== "background_gradient")) }
+                : child;
+            const rowContent = isPicker
+                ? [
+                    h("span", { text: child.props.picker_title || "Select", style: { fontWeight: "400", color: "var(--rn-text)" } }),
+                    h("span", { text: (child.props.picker_value || "") + "  ›", style: { color: "var(--rn-on-surface-variant, #8e8e93)", fontSize: "15px" } })
+                  ]
+                : (isBtn ? renderChildren(cleanChild) : renderNode(cleanChild));
+            const rowEl = h("div", {
+                className: "nk-section-row" + (isBtn ? " clickable" : ""),
+                fgColor: col,
+                style: {
+                    padding: "13px 16px",
+                    borderBottom: isLast ? "none" : "1px solid var(--rn-outline-variant, rgba(128,128,128,0.2))",
+                    display: "flex", alignItems: "center", justifyContent: isPicker ? "space-between" : "flex-start",
+                    gap: "8px", width: "100%", cursor: isBtn ? "pointer" : "default",
+                },
+                onClick: (isBtn && act) ? () => dispatch(act, null) : null,
+            }, rowContent);
+            if (rowGrad) applyWebGradient(rowEl, rowGrad);
+            else if (rowBg) applyWebBgColor(rowEl, rowBg);
+            return rowEl;
+        });
+        return h("div", { className: "nk-section", style: { display: "flex", flexDirection: "column", gap: "6px", width: "100%" } }, [
+            hdrNode && hdrNode.children[0] ? h("div", { style: { padding: "0 8px" } }, renderNode(hdrNode.children[0])) : null,
+            h("div", { style: { backgroundColor: "var(--rn-surface, #ffffff)", borderRadius: "14px", overflow: "hidden", border: "1px solid var(--rn-outline-variant, rgba(128,128,128,0.15))" } }, rows),
+            ftrNode && ftrNode.children[0] ? h("div", { style: { padding: "0 12px", opacity: "0.7", fontSize: "12px" } }, renderNode(ftrNode.children[0])) : null,
+        ]);
+}
+
+
+case "grid": {
+    const cols = Math.max(1, (node.props && node.props.columns) || 2);
+        const spacing = (node.props && node.props.spacing) || 12;
+        const children = node.children || [];
+        const hdrNode = children.find(c => c.name === "section_header");
+        const ftrNode = children.find(c => c.name === "section_footer");
+        const bodyChildren = children.filter(c => c.name !== "section_header" && c.name !== "section_footer").map(c => renderNode(c));
+        return h("div", { className: "nk-grid-wrap", style: { display: "flex", flexDirection: "column", gap: "8px", width: "100%" } }, [
+            hdrNode && hdrNode.children[0] ? h("div", { style: { padding: "0 4px" } }, renderNode(hdrNode.children[0])) : null,
+            h("div", { className: "nk-grid", style: { display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: `${spacing}px`, width: "100%" } }, bodyChildren),
+            ftrNode && ftrNode.children[0] ? h("div", { style: { padding: "0 4px", opacity: "0.7", fontSize: "12px" } }, renderNode(ftrNode.children[0])) : null,
+        ]);
+}
+
+
+case "spacer": {
+    const size = (node.props && node.props.size) || 0;
+        const el = document.createElement("div");
+        if (size > 0) {
+            el.style.width = size + "px";
+            el.style.height = size + "px";
+            el.style.flex = "0 0 auto";
+        } else {
+            el.style.flex = "1 1 auto";
+        }
+        return el;
+}
+/* END_PRIMITIVES */
+case "tabbar": {
+    const container = document.createElement("div");
+    container.classList.add("tabbar-container");
+    container.style.cssText = "display:flex;flex-direction:column;width:100%;height:100%;overflow:hidden;position:relative;";
+
+    const content = document.createElement("div");
+    content.classList.add("tabbar-content");
+    content.style.cssText = "flex:1;width:100%;height:100%;overflow:hidden;display:flex;flex-direction:column;";
+    if (node.children && node.children.length > 0) {
+        content.appendChild(renderNode(node.children[0]));
+    }
+    container.appendChild(content);
+
+    let tabs = (node.props && node.props.tabs) || [];
+    if (typeof tabs === "string") {
+        try { tabs = JSON.parse(tabs); } catch(e) { tabs = []; }
+    }
+    const activeIndex = (node.props && node.props.active_index) || 0;
+
+    if (Array.isArray(tabs) && tabs.length > 0) {
+        const bar = document.createElement("nav");
+        bar.classList.add("tabbar-bottom-nav");
+        bar.style.cssText = "display:flex;justify-content:space-around;align-items:center;border-top:1px solid rgba(0,0,0,0.1);background:var(--bg-color,#fff);padding:6px 0 18px 0;z-index:100;";
+
+        tabs.forEach((tab, idx) => {
+            const btn = document.createElement("button");
+            btn.classList.add("tab-item");
+            const isSelected = (idx === activeIndex);
+            btn.style.cssText = `display:flex;flex-direction:column;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:${isSelected ? 'var(--primary-color,#007aff)' : '#8e8e93'};font-size:11px;font-weight:${isSelected ? '600' : '400'};padding:4px 16px;gap:3px;`;
+            btn.innerHTML = `${getTabSvg(tab.icon || "star", isSelected)}<span>${tab.title || ''}</span>`;
+            btn.addEventListener("click", () => {
+                if (tab.action) dispatch(tab.action, null);
+            });
+            bar.appendChild(btn);
+        });
+        container.appendChild(bar);
+    }
+    return container;
+}
+
+
+
+
+                case "list":
+                                case "scrollview":
+                case "if":
+                    const container = document.createElement("div");
+                    container.classList.add("vstack");
+                    if (node.props && node.props.spacing !== undefined) container.style.gap = node.props.spacing + "px";
+                    if (node.children) node.children.forEach(c => container.appendChild(renderNode(c)));
+                    return container;
+                default:
+                    return document.createElement("div");
+            }
+        }
+
+        function getTabSvg(iconName, isSelected) {
+            const color = isSelected ? "var(--primary-color, #007aff)" : "#8e8e93";
+            switch ((iconName || "").toLowerCase()) {
+                case "house":
+                case "home":
+                    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="${isSelected ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`;
+                case "bag":
+                case "orders":
+                case "cart":
+                    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="${isSelected ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>`;
+                case "person":
+                case "profile":
+                case "user":
+                    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="${isSelected ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+                case "gear":
+                case "settings":
+                    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="${isSelected ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+                default:
+                    return `<svg width="22" height="22" viewBox="0 0 24 24" fill="${isSelected ? color : 'none'}" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+            }
+        }
+
+        let isPopstate = false;
+        window.addEventListener("popstate", (e) => {
+            isPopstate = true;
+            const targetPath = (e.state && e.state.path) || window.location.pathname || "/";
+            dispatch("navigate", { path: targetPath });
+        });
+
+        let lastPath = window.location.pathname || "/";
+        function renderUI() {
+            if (!liveUiNode) return;
+            const themeMode = (liveUiNode.props && liveUiNode.props.theme_mode) || "system";
+            const accentMode = (liveUiNode.props && liveUiNode.props.accent_mode) || "app";
+            document.documentElement.dataset.theme = themeMode;
+            document.documentElement.dataset.accent = accentMode;
+            const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) && CSS.supports("color", "-apple-system-control-accent");
+            const osAccent = isSafari ? "AccentColor" : ((liveUiNode.props && liveUiNode.props.os_accent) || "AccentColor");
+            if (accentMode === "system") { document.documentElement.style.setProperty("--rn-primary", osAccent); document.documentElement.style.setProperty("--nk-color-primary", osAccent); } else { document.documentElement.style.removeProperty("--rn-primary"); document.documentElement.style.removeProperty("--nk-color-primary"); }
+
+            const navNode = findNavStackNode(liveUiNode);
+            const currentPath = (navNode && navNode.props && navNode.props.current_path) || window.location.pathname || "/";
+
+            if (currentPath && window.location.pathname !== currentPath) {
+                if (isPopstate) {
+                    isPopstate = false;
+                } else {
+                    window.history.pushState({ path: currentPath }, "", currentPath);
+                }
+            } else {
+                isPopstate = false;
+            }
+            lastPath = currentPath;
+
+            const root = document.getElementById("root");
+            const { windowPages, modalLayers } = navNode ? extractNavLayers(navNode) : { windowPages: [], modalLayers: [] };
+            const sameNavState = (
+                root.children.length > 0 &&
+                windowPages.length === prevWebState.winDepth &&
+                modalLayers.length === prevWebState.modalCount &&
+                (modalLayers.length === 0 || modalLayers[modalLayers.length - 1].pages.length === prevWebState.topModalDepth) &&
+                ((windowPages.length > 0 && windowPages[windowPages.length - 1].props && windowPages[windowPages.length - 1].props.title) || "") === prevWebState.winTitle
+            );
+            if (sameNavState) {
+                morphNode(root.children[0], liveUiNode);
+            } else {
+                const activeScrolls = Array.from(root.querySelectorAll(".page-content")).map(el => el.scrollTop);
+                root.innerHTML = "";
+                root.appendChild(renderNode(liveUiNode));
+                const newScrolls = Array.from(root.querySelectorAll(".page-content"));
+                newScrolls.forEach((el, i) => {
+                    if (activeScrolls[i]) el.scrollTop = activeScrolls[i];
+                });
+            }
+        }
+
+        async function fetchUI(requestedPath) {
+            try {
+                let b64 = "";
+                if (window.wasm_api) {
+                    b64 = window.wasm_api.get_ui();
+                } else {
+                    const p = (requestedPath !== undefined && requestedPath !== null) ? requestedPath : "";
+                    const query = (p && p !== "/") ? `?path=${encodeURIComponent(p)}` : "";
+                    const res = await fetch(`${API_BASE}/api/ui_layout${query}`);
+                    if (res.status !== 200) throw new Error("Failed");
+                    const tsHdr = res.headers.get("X-Reload-Timestamp");
+                    if (tsHdr) lastReloadTs = Number(tsHdr) || lastReloadTs;
+                    b64 = await res.text();
+                }
+                applyB64UI(b64);
+            } catch (e) {
+                console.error("fetchUI error:", e);
+                if (!window.wasm_api) {
+                    setTimeout(() => fetchUI(), 1000);
+                }
+            }
+        }
+        
+        let lastReloadTs = 0;
+        let isPolling = false;
+        window.checkReload = async function checkReload() {
+            if (isPolling) return;
+            isPolling = true;
+            while (!window.wasm_api) {
+                try {
+                    const res = await fetch(`${API_BASE}/api/live_reload?wait_for=${lastReloadTs}`);
+                    const json = await res.json();
+                    if (json.timestamp && json.timestamp !== lastReloadTs) {
+                        lastReloadTs = json.timestamp;
+                        const linkEl = document.querySelector("link[href^=\"theme.css\"]");
+                        if (linkEl) linkEl.href = `theme.css?t=${lastReloadTs}`;
+                        await fetchUI();
+                    } else {
+                        await new Promise(r => setTimeout(r, 150));
+                    }
+                } catch (e) {
+                    await new Promise(r => setTimeout(r, 300));
+                }
+            }
+        }
+        
+        window.js_trigger_refresh = () => fetchUI();
+        globalThis.js_trigger_refresh = window.js_trigger_refresh;
+    </script>
+    <script type="module">
+        async function initWasm() {
+            try {
+                if (window.location.port === "5824") return false;
+                const module = await import('./wasm_app.js');
+                await module.default();
+                window.wasm_api = module;
+                module.init_app();
+                window.js_trigger_refresh();
+                return true;
+            } catch (e) {
+                console.error("WASM initialization error:", e);
+                return false;
+            }
+        }
+
+        initWasm().then(isWasm => {
+            if (!isWasm) {
+                fetchUI(window.location.pathname);
+                window.checkReload();
+                window.checkReload();
+            }
+        });
+    </script>
+</body>
+</html>

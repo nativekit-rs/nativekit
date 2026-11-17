@@ -1,0 +1,10 @@
+{
+  "light": {
+    "AccentColor": "#006040",
+    "brandColor": "#181D1A"
+  },
+  "dark": {
+    "AccentColor": "#529F7A",
+    "brandColor": "#E0E3DE"
+  }
+}

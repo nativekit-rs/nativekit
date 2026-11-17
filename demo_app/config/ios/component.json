@@ -1,0 +1,8 @@
+{
+  "switch": {
+    "tint": "AccentColor"
+  },
+  "button": {
+    "tint": null
+  }
+}

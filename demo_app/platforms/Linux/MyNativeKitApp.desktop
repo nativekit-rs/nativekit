@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=My Native Kit App
+Comment=My Native Kit App
+Exec=./MyNativeKitApp
+Icon=icon
+Terminal=false
+Categories=Utility;Development;
+StartupWMClass=com.nativeui.mynativekitapp

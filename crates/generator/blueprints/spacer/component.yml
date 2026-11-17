@@ -1,0 +1,5 @@
+name: Spacer
+rust:
+  accepts_children: false
+  builder:
+    size: u32

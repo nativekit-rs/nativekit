@@ -1,0 +1,16 @@
+[workspace]
+default-members = ["crates/cli"]
+members = [
+    "crates/framework",
+    "crates/generator",
+    "crates/cli",
+    "crates/macros",
+    "demo_app"
+]
+resolver = "2"
+
+[profile.dev]
+incremental = true
+codegen-units = 256
+debug = 0
+opt-level = 0

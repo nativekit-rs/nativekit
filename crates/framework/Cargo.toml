@@ -1,0 +1,34 @@
+[package]
+name = "native-kit"
+version = "0.1.0"
+edition = "2021"
+description = "High-performance 5-platform Dynamic UI Engine for Rust (iOS, Android, Linux, Windows, Web)"
+homepage = "https://nativekit.rs"
+repository = "https://github.com/nativekit-rs/nativekit"
+license = "MIT"
+
+[dependencies]
+tiny_http = "0.12.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+futures = "0.3"
+lazy_static = "1.4"
+native-kit-macros = { version = "0.1.0", path = "../macros" }
+inventory = "0.3.24"
+base64 = "0.23.1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4.43"
+wasm-bindgen = "=0.2.93"
+tokio = { version = "1", features = ["sync", "macros", "time"] }
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+
+[features]
+client = []
+
+[build-dependencies]
+serde_json = "1.0"

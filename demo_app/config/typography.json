@@ -1,0 +1,72 @@
+{
+  "large_title": {
+    "ios":     { "style": "largeTitle",   "weight": "regular",  "emphasized": "bold" },
+    "android": { "style": "displaySmall", "weight": "regular",  "emphasized": "bold" },
+    "linux":   { "style": "title-1",      "weight": "bold",     "emphasized": "heavy" },
+    "windows": { "style": "LargeTitle",   "weight": "regular",  "emphasized": "bold" },
+    "web":     { "style": "large-title",  "weight": "regular",  "emphasized": "bold" }
+  },
+  "title1": {
+    "ios":     { "style": "title",         "weight": "regular",  "emphasized": "bold" },
+    "android": { "style": "headlineLarge", "weight": "regular",  "emphasized": "bold" },
+    "linux":   { "style": "title-1",       "weight": "regular",  "emphasized": "bold" },
+    "windows": { "style": "Title1",        "weight": "regular",  "emphasized": "bold" },
+    "web":     { "style": "title-1",       "weight": "regular",  "emphasized": "bold" }
+  },
+  "title2": {
+    "ios":     { "style": "title2",         "weight": "regular",  "emphasized": "bold" },
+    "android": { "style": "headlineMedium", "weight": "regular",  "emphasized": "bold" },
+    "linux":   { "style": "title-2",        "weight": "regular",  "emphasized": "bold" },
+    "windows": { "style": "Title2",         "weight": "regular",  "emphasized": "bold" },
+    "web":     { "style": "title-2",        "weight": "regular",  "emphasized": "bold" }
+  },
+  "title3": {
+    "ios":     { "style": "title3",        "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "headlineSmall", "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "title-3",       "weight": "regular",  "emphasized": "semibold" },
+    "windows": { "style": "Title3",        "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "title-3",       "weight": "regular",  "emphasized": "semibold" }
+  },
+  "headline": {
+    "ios":     { "style": "headline",    "weight": "semibold", "emphasized": "semibold" },
+    "android": { "style": "titleMedium", "weight": "semibold", "emphasized": "bold" },
+    "linux":   { "style": "heading",     "weight": "semibold", "emphasized": "bold" },
+    "windows": { "style": "Headline",    "weight": "semibold", "emphasized": "bold" },
+    "web":     { "style": "headline",    "weight": "semibold", "emphasized": "semibold" }
+  },
+  "body": {
+    "ios":     { "style": "body",      "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "bodyLarge", "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "body",      "weight": "regular",  "emphasized": "semibold" },
+    "windows": { "style": "Body",      "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "body",      "weight": "regular",  "emphasized": "semibold" }
+  },
+  "subhead": {
+    "ios":     { "style": "subheadline", "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "titleSmall",  "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "title-4",     "weight": "regular",  "emphasized": "semibold" },
+    "windows": { "style": "Subhead",     "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "subhead",     "weight": "regular",  "emphasized": "semibold" }
+  },
+  "footnote": {
+    "ios":     { "style": "footnote",  "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "bodySmall", "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "caption",   "weight": "regular",  "emphasized": "semibold" },
+    "windows": { "style": "Footnote",  "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "footnote",  "weight": "regular",  "emphasized": "semibold" }
+  },
+  "caption1": {
+    "ios":     { "style": "caption",         "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "labelMedium",     "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "caption-heading", "weight": "regular",  "emphasized": "bold" },
+    "windows": { "style": "Caption1",        "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "caption-1",       "weight": "regular",  "emphasized": "semibold" }
+  },
+  "caption2": {
+    "ios":     { "style": "caption2",   "weight": "regular",  "emphasized": "semibold" },
+    "android": { "style": "labelSmall", "weight": "regular",  "emphasized": "semibold" },
+    "linux":   { "style": "caption",    "weight": "light",    "emphasized": "semibold" },
+    "windows": { "style": "Caption2",   "weight": "regular",  "emphasized": "semibold" },
+    "web":     { "style": "caption-2",  "weight": "regular",  "emphasized": "semibold" }
+  }
+}

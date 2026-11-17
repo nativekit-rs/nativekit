@@ -1,0 +1,7 @@
+{
+  "id": "fullstack",
+  "name": "Fullstack + OTA Server",
+  "description": "Next.js-style #[server] functions for Over-The-Air UI components and backend routes",
+  "tier": "free",
+  "order": 3
+}

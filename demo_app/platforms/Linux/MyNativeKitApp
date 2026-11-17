@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+export GSK_RENDERER=cairo
+export CARGO_TARGET_DIR="../../../target/linux-build"
+export G_ENABLE_DIAGNOSTIC=0
+if [ -f "$CARGO_TARGET_DIR/release/MyNativeKitApp" ]; then
+    exec "$CARGO_TARGET_DIR/release/MyNativeKitApp" "$@"
+else
+    cargo build --release --features prod
+    exec "$CARGO_TARGET_DIR/release/MyNativeKitApp" "$@"
+fi

@@ -1,0 +1,8 @@
+name: TextInput
+rust:
+  accepts_children: false
+  builder:
+    value: String
+    placeholder: String
+    width: String
+    on_change: Action
