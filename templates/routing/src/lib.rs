@@ -1,5 +1,4 @@
 pub mod app;
-pub mod pages;
 
 pub struct NativeApp;
 

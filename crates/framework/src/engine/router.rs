@@ -649,6 +649,8 @@ macro_rules! Route {
 #[macro_export]
 macro_rules! Router {
     ({ $($route:expr),* $(,)? }) => {{
+        #[allow(unused_imports)]
+        use crate::*;
         let router = $crate::engine::router::global_router().lock().unwrap().clone();
         $crate::Router!(__global, router => { $($route),* })
     }};

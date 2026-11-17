@@ -642,6 +642,12 @@ fn main() {
 
                         let start_time = SystemTime::now();
 
+                        // Touch src/lib.rs if it exists so proc-macros like `auto_import!()` re-scan new/deleted files
+                        let lib_rs = project::project_path("src/lib.rs");
+                        if let Ok(lib_content) = std::fs::read(&lib_rs) {
+                            let _ = std::fs::write(&lib_rs, lib_content);
+                        }
+
                         if !use_dylib_host {
                             if let Ok(mut lock) = child_ref_clone2.lock() {
                                 if let Some(mut old_child) = lock.take() {

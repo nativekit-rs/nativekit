@@ -357,6 +357,13 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let primitives_dir = manifest_dir.join("src/engine/primitives");
 
+    for dir_cand in ["src/components", "src/pages", "../../demo_app/src/components", "../../demo_app/src/pages"] {
+        let p = PathBuf::from(dir_cand);
+        if p.exists() {
+            println!("cargo:rerun-if-changed={}", p.display());
+        }
+    }
+
     // 0. Parse app.json for server URLs
     let app_json_content = read_config_file(&manifest_dir, "app.json", "{}");
     let app_json_single_line = app_json_content.lines().map(|l| l.trim()).collect::<Vec<_>>().join(" ");

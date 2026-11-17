@@ -29,6 +29,49 @@ impl<T: IntoNode> IntoChildren for Vec<T> {
     }
 }
 
+impl<T: IntoChildren> IntoChildren for Option<T> {
+    fn into_children(self) -> Vec<Node> {
+        match self {
+            Some(inner) => inner.into_children(),
+            None => Vec::new(),
+        }
+    }
+}
+
+impl IntoChildren for () {
+    fn into_children(self) -> Vec<Node> {
+        Vec::new()
+    }
+}
+
+pub type Children = Vec<Node>;
+
+pub trait IntoBoolProp {
+    fn into_bool_prop(self) -> bool;
+}
+
+impl IntoBoolProp for bool {
+    fn into_bool_prop(self) -> bool {
+        self
+    }
+}
+
+impl IntoBoolProp for () {
+    fn into_bool_prop(self) -> bool {
+        true
+    }
+}
+
+pub trait IntoOptionalProp<T> {
+    fn into_optional_prop(self) -> Option<T>;
+}
+
+impl<T, U: Into<T>> IntoOptionalProp<T> for U {
+    fn into_optional_prop(self) -> Option<T> {
+        Some(self.into())
+    }
+}
+
 // Tuples up to 10 elements
 macro_rules! impl_into_children_tuple {
     ( $($idx:tt => $name:ident),+ ) => {
