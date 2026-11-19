@@ -1487,6 +1487,16 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         }
 
+        impl #fn_generics ::native_kit::ToNavigationTarget for #fn_name #fn_generics {
+            fn apply_to_router(self, router: &mut ::native_kit::Router) -> ::std::option::Option<::std::string::String> {
+                let path = ::native_kit::register_ephemeral_closure(move || {
+                    ::native_kit::IntoNode::into_node(self.clone())
+                });
+                router.navigate(&path);
+                ::std::option::Option::Some(path)
+            }
+        }
+
         #( #prop_option_helpers )*
     };
 
@@ -1603,6 +1613,258 @@ fn is_view_component_definition(tokens: &[TokenTree]) -> bool {
         return true;
     }
     is_custom_component_ident(&name_str) && tokens.len() > idx + 2
+}
+
+fn parse_tab_entries(tokens: &[TokenTree]) -> Vec<TokenStream2> {
+    let mut entries = Vec::new();
+    let mut idx = 0;
+    while idx < tokens.len() {
+        if let TokenTree::Punct(p) = &tokens[idx] {
+            if p.as_char() == ',' || p.as_char() == ';' {
+                idx += 1;
+                continue;
+            }
+        }
+        if let TokenTree::Ident(id) = &tokens[idx] {
+            if id == "Tab" {
+                idx += 1;
+                if idx < tokens.len() {
+                    if let TokenTree::Punct(p) = &tokens[idx] {
+                        if p.as_char() == '!' {
+                            idx += 1;
+                        }
+                    }
+                }
+                if idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Parenthesis {
+                            let parts = split_comma_args(g.stream());
+                            if parts.len() >= 3 {
+                                let title_ts = &parts[0];
+                                let icon_tokens: Vec<TokenTree> = parts[1].clone().into_iter().collect();
+                                let icon_ts = rewrite_leading_dot_tokens("icon", id.span(), &icon_tokens);
+                                let route_ts = &parts[2];
+                                entries.push(quote! {
+                                    ::native_kit::Tab(#title_ts, #icon_ts, #route_ts)
+                                });
+                            }
+                            idx += 1;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+        idx += 1;
+    }
+    entries
+}
+
+fn parse_route_entries(tokens: &[TokenTree]) -> Vec<TokenStream2> {
+    let mut entries = Vec::new();
+    let mut idx = 0;
+    while idx < tokens.len() {
+        if let TokenTree::Punct(p) = &tokens[idx] {
+            if p.as_char() == ',' || p.as_char() == ';' {
+                idx += 1;
+                continue;
+            }
+        }
+        if let TokenTree::Ident(id) = &tokens[idx] {
+            if id == "Route" {
+                idx += 1;
+                if idx < tokens.len() {
+                    if let TokenTree::Punct(p) = &tokens[idx] {
+                        if p.as_char() == '!' {
+                            idx += 1;
+                        }
+                    }
+                }
+                if idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Parenthesis {
+                            let parts = split_comma_args(g.stream());
+                            if parts.len() >= 2 {
+                                let pat_ts = &parts[0];
+                                let handler_tokens: Vec<TokenTree> = parts[1..].iter().flat_map(|p| p.clone()).collect();
+                                let transformed_handler = transform_rust_tokens(&handler_tokens);
+                                let mut route_expr = quote! {
+                                    ::native_kit::Route(#pat_ts, #transformed_handler)
+                                };
+                                idx += 1;
+                                // Consume chained `.presentation(.sheet)`, `.tab("Home", .home)`, `.sheet()`, `.form()`, etc.
+                                while idx + 2 < tokens.len() {
+                                    let TokenTree::Punct(dot) = &tokens[idx] else { break; };
+                                    if dot.as_char() != '.' {
+                                        break;
+                                    }
+                                    let TokenTree::Ident(m_ident) = &tokens[idx + 1] else { break; };
+                                    let TokenTree::Group(m_group) = &tokens[idx + 2] else { break; };
+                                    if m_group.delimiter() != Delimiter::Parenthesis {
+                                        break;
+                                    }
+                                    let m_name = m_ident.to_string();
+                                    let m_args = if m_name == "tab" {
+                                        let t_parts = split_comma_args(m_group.stream());
+                                        if t_parts.len() >= 2 {
+                                            let t0 = &t_parts[0];
+                                            let ic_toks: Vec<TokenTree> = t_parts[1].clone().into_iter().collect();
+                                            let t1 = rewrite_leading_dot_tokens("icon", m_ident.span(), &ic_toks);
+                                            quote! { #t0, #t1 }
+                                        } else {
+                                            m_group.stream()
+                                        }
+                                    } else {
+                                        transform_method_args(m_ident, m_group.stream(), None)
+                                    };
+                                    let mut ng = Group::new(Delimiter::Parenthesis, m_args);
+                                    ng.set_span(m_group.span());
+                                    route_expr.extend([
+                                        TokenTree::Punct(dot.clone()),
+                                        TokenTree::Ident(m_ident.clone()),
+                                        TokenTree::Group(ng),
+                                    ]);
+                                    idx += 3;
+                                }
+                                entries.push(route_expr);
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        idx += 1;
+    }
+    entries
+}
+
+#[proc_macro]
+pub fn App(input: TokenStream) -> TokenStream {
+    let tokens: Vec<TokenTree> = TokenStream2::from(input).into_iter().collect();
+    let mut idx = 0;
+
+    let mut state_struct_tokens = TokenStream2::new();
+    let mut tab_entries: Vec<TokenStream2> = Vec::new();
+    let mut route_entries: Vec<TokenStream2> = Vec::new();
+    let mut fallback_body_tokens: Vec<TokenTree> = Vec::new();
+
+    while idx < tokens.len() {
+        if let TokenTree::Ident(id) = &tokens[idx] {
+            let id_str = id.to_string();
+            if (id_str == "State" || id_str == "Store") && idx + 1 < tokens.len() {
+                if let TokenTree::Group(g) = &tokens[idx + 1] {
+                    if g.delimiter() == Delimiter::Parenthesis || g.delimiter() == Delimiter::Brace {
+                        let parsed_fields = parse_component_params(g);
+                        let mut f_defs = Vec::new();
+                        let mut f_inits = Vec::new();
+                        let fallback_ty: Type = syn::parse2(quote! { String }).unwrap();
+                        for f in &parsed_fields {
+                            let f_ident = &f.ident;
+                            let f_ty = f.ty.as_ref().unwrap_or(&fallback_ty);
+                            f_defs.push(quote! { pub #f_ident: #f_ty });
+                            if let Some(ref def_expr) = f.default_expr {
+                                f_inits.push(quote! { #f_ident: #def_expr });
+                            } else {
+                                f_inits.push(quote! { #f_ident: ::std::default::Default::default() });
+                            }
+                        }
+                        state_struct_tokens = quote! {
+                            #[derive(Clone, Debug)]
+                            pub struct Store {
+                                #( #f_defs ),*
+                            }
+
+                            impl ::std::default::Default for Store {
+                                fn default() -> Self {
+                                    Self {
+                                        #( #f_inits ),*
+                                    }
+                                }
+                            }
+
+                            pub type AppState = Store;
+                        };
+                        idx += 2;
+                        continue;
+                    }
+                }
+            }
+
+            if id_str == "Tabs" {
+                idx += 1;
+                while idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Brace {
+                            let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                            tab_entries.extend(parse_tab_entries(&inner));
+                            idx += 1;
+                            break;
+                        }
+                    }
+                    idx += 1;
+                }
+                continue;
+            }
+
+            if id_str == "Routes" || id_str == "Router" {
+                idx += 1;
+                if idx < tokens.len() {
+                    if let TokenTree::Punct(p) = &tokens[idx] {
+                        if p.as_char() == '!' {
+                            idx += 1;
+                        }
+                    }
+                }
+                if idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                        route_entries.extend(parse_route_entries(&inner));
+                        idx += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if id_str == "Route" {
+                let rem = &tokens[idx..];
+                route_entries.extend(parse_route_entries(rem));
+                break;
+            }
+        }
+
+        fallback_body_tokens.push(tokens[idx].clone());
+        idx += 1;
+    }
+
+    let app_body = if !route_entries.is_empty() || !tab_entries.is_empty() {
+        quote! {
+            ::native_kit::Router!(
+                tabs: [ #( #tab_entries ),* ],
+                routes: [ #( #route_entries ),* ]
+            )
+        }
+    } else if !fallback_body_tokens.is_empty() {
+        TokenStream2::from(expand_view_macro(TokenStream::from(
+            TokenStream2::from_iter(fallback_body_tokens),
+        )))
+    } else {
+        quote! { ::native_kit::VStack::new() }
+    };
+
+    TokenStream::from(quote! {
+        #[allow(unused_imports)]
+        use ::native_kit::*;
+        #[allow(unused_imports)]
+        use crate::__nk_auto::*;
+
+        #state_struct_tokens
+
+        #[allow(non_snake_case)]
+        pub fn App() -> impl ::native_kit::IntoNode {
+            #app_body
+        }
+    })
 }
 
 #[proc_macro]

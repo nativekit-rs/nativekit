@@ -81,22 +81,24 @@ pub trait ActionHandler<Args, S>: Send + Sync + 'static {
     fn invoke(&self, state: &mut dyn std::any::Any, payload: Option<Value>);
 }
 
-impl<F> ActionHandler<(), ()> for F
+impl<F, R> ActionHandler<((), R), ()> for F
 where
-    F: Fn() + Send + Sync + 'static,
+    F: Fn() -> R + Send + Sync + 'static,
+    R: 'static,
 {
     fn invoke(&self, _state: &mut dyn std::any::Any, _payload: Option<Value>) {
-        self();
+        let _ = self();
     }
 }
 
-impl<F, S: 'static> ActionHandler<(&mut S,), S> for F
+impl<F, S: 'static, R> ActionHandler<(&mut S, (), R), S> for F
 where
-    F: Fn(&mut S) + Send + Sync + 'static,
+    F: Fn(&mut S) -> R + Send + Sync + 'static,
+    R: 'static,
 {
     fn invoke(&self, any_state: &mut dyn std::any::Any, _payload: Option<Value>) {
         if let Some(state) = any_state.downcast_mut::<S>() {
-            self(state);
+            let _ = self(state);
         }
     }
 }

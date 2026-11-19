@@ -28,7 +28,7 @@ pub use components::*;
 pub mod props;
 pub use props::*;
 pub use native_kit_macros::{
-    component, prop, props, render, server, ui, view, Button, Grid, HStack,
+    component, prop, props, render, server, ui, view, App, Button, Grid, HStack,
     NavigationStack, Page, Return, Section, ToolbarTop, VStack, View,
 };
 #[cfg(target_arch = "wasm32")]

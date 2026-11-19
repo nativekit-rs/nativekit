@@ -75,120 +75,200 @@ pub fn register_sheet_pattern(pattern: &str) {
 
 static EPHEMERAL_COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(1);
 
-pub fn ephemeral_views() -> &'static Mutex<HashMap<String, Node>> {
-    static VIEWS: OnceLock<Mutex<HashMap<String, Node>>> = OnceLock::new();
+pub struct EphemeralEntry {
+    pub render: Box<dyn Fn() -> Node + Send + Sync>,
+    pub presentation: String,
+}
+
+pub fn ephemeral_views() -> &'static Mutex<HashMap<String, EphemeralEntry>> {
+    static VIEWS: OnceLock<Mutex<HashMap<String, EphemeralEntry>>> = OnceLock::new();
     VIEWS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 pub fn register_ephemeral_view(node: Node) -> String {
+    register_ephemeral_closure(move || node.clone())
+}
+
+pub fn register_ephemeral_closure<F>(f: F) -> String
+where
+    F: Fn() -> Node + Send + Sync + 'static,
+{
     let id = EPHEMERAL_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let path = format!("__ephemeral_{}", id);
     let mut views = ephemeral_views().lock().unwrap();
-    views.insert(path.clone(), node);
+    views.insert(
+        path.clone(),
+        EphemeralEntry {
+            render: Box::new(f),
+            presentation: "push".to_string(),
+        },
+    );
     path
 }
 
-pub fn get_ephemeral_view(path: &str) -> Option<Node> {
+pub fn set_ephemeral_presentation(path: &str, pres: &str) {
+    if let Ok(mut views) = ephemeral_views().lock() {
+        if let Some(entry) = views.get_mut(path) {
+            entry.presentation = pres.to_string();
+        }
+    }
+    if pres != "push" {
+        register_sheet_pattern(path);
+    }
+}
+
+pub fn get_ephemeral_presentation(path: &str) -> Option<String> {
     let views = ephemeral_views().lock().unwrap();
-    views.get(path).cloned()
+    views.get(path).map(|e| e.presentation.clone())
+}
+
+pub fn get_ephemeral_view(path: &str) -> Option<Node> {
+    let render_node = {
+        let views = ephemeral_views().lock().unwrap();
+        views.get(path).map(|e| (e.render)())
+    };
+    render_node
+}
+
+#[derive(Clone, Debug)]
+pub struct NavigationHandle {
+    pub path: Option<String>,
+}
+
+impl NavigationHandle {
+    /// Set presentation style (`.sheet`, `.form`, `.fullscreen`, `.popover`, `.push`)
+    pub fn presentation(self, pres: impl Into<String>) -> Self {
+        let p_str = pres.into();
+        if let Some(ref path) = self.path {
+            if path.starts_with("__ephemeral_") {
+                set_ephemeral_presentation(path, &p_str);
+            } else if p_str != "push" {
+                register_sheet_pattern(path);
+            }
+        }
+        crate::engine::dev_server::notify_reload();
+        self
+    }
+
+    pub fn sheet(self) -> Self {
+        self.presentation("sheet")
+    }
+
+    pub fn form(self) -> Self {
+        self.presentation("form")
+    }
+
+    pub fn fullscreen(self) -> Self {
+        self.presentation("fullscreen")
+    }
 }
 
 pub trait ToNavigationTarget {
-    fn apply_to_router(self, router: &mut Router);
+    fn apply_to_router(self, router: &mut Router) -> Option<String>;
 }
 
 impl ToNavigationTarget for &str {
-    fn apply_to_router(self, router: &mut Router) {
-        router.navigate(self);
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
+        let s = self.to_string();
+        router.navigate(&s);
+        Some(s)
     }
 }
 
 impl ToNavigationTarget for String {
-    fn apply_to_router(self, router: &mut Router) {
-        router.navigate(self);
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
+        router.navigate(&self);
+        Some(self)
     }
 }
 
 impl ToNavigationTarget for &String {
-    fn apply_to_router(self, router: &mut Router) {
-        router.navigate(self.as_str());
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
+        let s = self.clone();
+        router.navigate(&s);
+        Some(s)
     }
 }
 
 impl ToNavigationTarget for i32 {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         if self < 0 {
             router.pop_n(self.unsigned_abs() as usize);
         }
+        None
     }
 }
 
 impl ToNavigationTarget for isize {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         if self < 0 {
             router.pop_n(self.unsigned_abs());
         }
+        None
     }
 }
 
 impl ToNavigationTarget for Node {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         let path = register_ephemeral_view(self);
-        router.navigate(path);
+        router.navigate(&path);
+        Some(path)
     }
 }
 
 impl ToNavigationTarget for crate::engine::primitives::Page {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         let node = crate::engine::builder::IntoNode::into_node(self);
         let path = register_ephemeral_view(node);
-        router.navigate(path);
+        router.navigate(&path);
+        Some(path)
     }
 }
 
 impl ToNavigationTarget for crate::engine::primitives::VStack {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         let node = crate::engine::builder::IntoNode::into_node(self);
         let path = register_ephemeral_view(node);
-        router.navigate(path);
+        router.navigate(&path);
+        Some(path)
     }
 }
 
 impl ToNavigationTarget for crate::engine::primitives::HStack {
-    fn apply_to_router(self, router: &mut Router) {
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
         let node = crate::engine::builder::IntoNode::into_node(self);
         let path = register_ephemeral_view(node);
-        router.navigate(path);
+        router.navigate(&path);
+        Some(path)
     }
 }
 
-impl ToNavigationTarget for fn() -> Node {
-    fn apply_to_router(self, router: &mut Router) {
-        let node = self();
-        let path = register_ephemeral_view(node);
-        router.navigate(path);
+impl<F, V> ToNavigationTarget for F
+where
+    F: Fn() -> V + Send + Sync + 'static,
+    V: crate::engine::builder::IntoNode + 'static,
+{
+    fn apply_to_router(self, router: &mut Router) -> Option<String> {
+        let path = register_ephemeral_closure(move || {
+            crate::engine::builder::IntoNode::into_node((self)())
+        });
+        router.navigate(&path);
+        Some(path)
     }
 }
 
-impl ToNavigationTarget for fn() -> crate::engine::primitives::Page {
-    fn apply_to_router(self, router: &mut Router) {
-        let node = crate::engine::builder::IntoNode::into_node(self());
-        let path = register_ephemeral_view(node);
-        router.navigate(path);
-    }
-}
-
-pub fn navigate_view(view: impl crate::engine::builder::IntoNode) {
+pub fn navigate_view(view: impl crate::engine::builder::IntoNode) -> NavigationHandle {
     let node = view.into_node();
-    navigate(node);
+    navigate(node)
 }
 
-pub fn navigate(target: impl ToNavigationTarget) {
-    {
+pub fn navigate(target: impl ToNavigationTarget) -> NavigationHandle {
+    let path = {
         let mut r = global_router().lock().unwrap();
-        target.apply_to_router(&mut r);
-    }
+        target.apply_to_router(&mut r)
+    };
     crate::engine::dev_server::notify_reload();
+    NavigationHandle { path }
 }
 
 pub fn switch_tab(tab: impl Into<String>) {
@@ -580,6 +660,75 @@ pub struct RouteEntry<'a> {
     pub render: Box<dyn Fn(&RouteParams) -> Node + 'a>,
 }
 
+pub trait IntoRouteRender<'a, M> {
+    fn into_route_render(self) -> Box<dyn Fn(&RouteParams) -> Node + 'a>;
+}
+
+pub struct RouteRenderNodeMarker;
+pub struct RouteRenderFn0Marker;
+pub struct RouteRenderFn1Marker;
+
+impl<'a, V> IntoRouteRender<'a, RouteRenderNodeMarker> for V
+where
+    V: crate::engine::builder::IntoNode + Clone + 'a,
+{
+    fn into_route_render(self) -> Box<dyn Fn(&RouteParams) -> Node + 'a> {
+        Box::new(move |_params: &RouteParams| {
+            crate::engine::builder::IntoNode::into_node(self.clone())
+        })
+    }
+}
+
+impl<'a, F, V> IntoRouteRender<'a, RouteRenderFn0Marker> for F
+where
+    F: Fn() -> V + 'a,
+    V: crate::engine::builder::IntoNode,
+{
+    fn into_route_render(self) -> Box<dyn Fn(&RouteParams) -> Node + 'a> {
+        Box::new(move |_params: &RouteParams| {
+            crate::engine::builder::IntoNode::into_node((self)())
+        })
+    }
+}
+
+impl<'a, F, V> IntoRouteRender<'a, RouteRenderFn1Marker> for F
+where
+    F: Fn(&RouteParams) -> V + 'a,
+    V: crate::engine::builder::IntoNode,
+{
+    fn into_route_render(self) -> Box<dyn Fn(&RouteParams) -> Node + 'a> {
+        Box::new(move |params: &RouteParams| {
+            crate::engine::builder::IntoNode::into_node((self)(params))
+        })
+    }
+}
+
+#[allow(non_snake_case)]
+pub fn Route<'a, M>(pattern: &'static str, handler: impl IntoRouteRender<'a, M>) -> RouteEntry<'a> {
+    RouteEntry {
+        pattern,
+        presentation: "push",
+        tab_info: None,
+        render: handler.into_route_render(),
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct TabEntry {
+    pub title: &'static str,
+    pub icon: String,
+    pub route: &'static str,
+}
+
+#[allow(non_snake_case)]
+pub fn Tab(title: &'static str, icon: impl Into<String>, route: &'static str) -> TabEntry {
+    TabEntry {
+        title,
+        icon: icon.into(),
+        route,
+    }
+}
+
 impl<'a> RouteEntry<'a> {
     pub fn tab(mut self, title: &'static str, icon: &'static str) -> Self {
         self.tab_info = Some(TabInfo { title, icon });
@@ -587,7 +736,13 @@ impl<'a> RouteEntry<'a> {
     }
 
     pub fn presentation(mut self, pres: &'static str) -> Self {
-        self.presentation = pres;
+        self.presentation = match pres {
+            "sheet" => "sheet",
+            "form" | "dialog" | "modal" => "form",
+            "fullscreen" => "fullscreen",
+            "popover" => "popover",
+            _ => "push",
+        };
         self
     }
 
@@ -648,21 +803,31 @@ macro_rules! Route {
 
 #[macro_export]
 macro_rules! Router {
+    (tabs: [$($tab:expr),* $(,)?], routes: [$($route:expr),* $(,)?]) => {{
+        #[allow(unused_imports)]
+        use crate::__nk_auto::*;
+        let router = $crate::engine::router::global_router().lock().unwrap().clone();
+        $crate::Router!(__global, router, [$($tab),*] => { $($route),* })
+    }};
     ({ $($route:expr),* $(,)? }) => {{
         #[allow(unused_imports)]
         use crate::__nk_auto::*;
         let router = $crate::engine::router::global_router().lock().unwrap().clone();
-        $crate::Router!(__global, router => { $($route),* })
+        $crate::Router!(__global, router, [] => { $($route),* })
     }};
     ($store:ident => { $($route:expr),* $(,)? }) => {{
         let router = $crate::engine::router::global_router().lock().unwrap().clone();
-        $crate::Router!($store, router => { $($route),* })
+        $crate::Router!($store, router, [] => { $($route),* })
     }};
     ($router:expr => { $($route:expr),* $(,)? }) => {{
-        $crate::Router!(__global, $router => { $($route),* })
+        $crate::Router!(__global, $router, [] => { $($route),* })
     }};
     ($state:ident, $router:expr => { $($route:expr),* $(,)? }) => {{
+        $crate::Router!($state, $router, [] => { $($route),* })
+    }};
+    ($state:ident, $router:expr, [$($explicit_tab:expr),* $(,)?] => { $($route:expr),* $(,)? }) => {{
         let routes = vec![$($route),*];
+        let explicit_tabs: Vec<$crate::engine::router::TabEntry> = vec![$($explicit_tab),*];
 
         for entry in &routes {
             if entry.presentation != "push" {
@@ -670,10 +835,17 @@ macro_rules! Router {
             }
         }
 
-        let tabs_meta: Vec<(&'static str, &'static str, &'static str)> = routes
-            .iter()
-            .filter_map(|r| r.tab_info.as_ref().map(|t| (r.pattern, t.title, t.icon)))
+        let mut tabs_meta: Vec<(&'static str, &'static str, String)> = explicit_tabs
+            .into_iter()
+            .map(|t| (t.route, t.title, t.icon))
             .collect();
+
+        if tabs_meta.is_empty() {
+            tabs_meta = routes
+                .iter()
+                .filter_map(|r| r.tab_info.as_ref().map(|t| (r.pattern, t.title, t.icon.to_string())))
+                .collect();
+        }
 
         for (pat, _, _) in &tabs_meta {
             $crate::engine::router::register_tab_root(pat);
@@ -740,6 +912,20 @@ macro_rules! Router {
                         break;
                     }
                 }
+                if !is_new_layer && path.starts_with("__ephemeral_") {
+                    if let Some(ep_pres) = $crate::engine::router::get_ephemeral_presentation(path) {
+                        if ep_pres != "push" {
+                            is_new_layer = true;
+                            next_presentation = match ep_pres.as_str() {
+                                "sheet" => "sheet",
+                                "form" | "dialog" | "modal" => "form",
+                                "fullscreen" => "fullscreen",
+                                "popover" => "popover",
+                                _ => "sheet",
+                            };
+                        }
+                    }
+                }
             }
 
             if is_new_layer && !current_layer_pages.is_empty() {
@@ -785,14 +971,24 @@ macro_rules! Router {
 
             if found_node.is_none() {
                 if let Some(mut node) = $crate::engine::router::get_ephemeral_view(path) {
+                    let ep_pres = $crate::engine::router::get_ephemeral_presentation(path)
+                        .unwrap_or_else(|| "push".to_string());
                     if let $crate::engine::ast::Node::Element { ref mut props, .. } = node {
                         if !props.iter().any(|(k, _)| k == "presentation") {
-                            props.push(("presentation".to_string(), $crate::engine::ast::PropValue::String("push".to_string())));
+                            props.push(("presentation".to_string(), $crate::engine::ast::PropValue::String(ep_pres.clone())));
                         }
-                        if current_layer_pages.len() > 0 && !props.iter().any(|(k, _)| k == "on_back") {
-                            let back_id = $crate::engine::registry::register_handler(|| {
-                                $crate::engine::router::navigate(-1);
-                            });
+                        let is_form_root = current_layer_pages.is_empty()
+                            && matches!(current_layer_presentation, "form" | "dialog" | "modal" | "fullscreen");
+                        if (current_layer_pages.len() > 0 || is_form_root) && !props.iter().any(|(k, _)| k == "on_back") {
+                            let back_id = if is_form_root {
+                                $crate::engine::registry::register_handler(|| {
+                                    $crate::engine::router::dismiss();
+                                })
+                            } else {
+                                $crate::engine::registry::register_handler(|| {
+                                    $crate::engine::router::navigate(-1);
+                                })
+                            };
                             props.push(("on_back".to_string(), $crate::engine::ast::PropValue::String(back_id)));
                         }
                     }
@@ -855,7 +1051,7 @@ macro_rules! Router {
                 let action_id = $crate::engine::registry::register_handler(move || {
                     $crate::engine::router::switch_tab(pattern);
                 });
-                let (ios_ic, and_ic, lin_ic, win_ic, web_ic) = $crate::engine::router::resolve_tab_icon_props(icon);
+                let (ios_ic, and_ic, lin_ic, win_ic, web_ic) = $crate::engine::router::resolve_tab_icon_props(icon.as_str());
                 serde_json::json!({
                     "title": title,
                     "icon": icon,
