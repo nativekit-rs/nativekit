@@ -59,10 +59,6 @@ impl Grid {
         self.props.push(("scroll_freely".to_string(), PropValue::Bool(true)));
         self
     }
-    #[allow(non_snake_case)]
-    pub fn scrollFreely(self) -> Self {
-        self.scroll_freely()
-    }
     pub fn uncontained(mut self) -> Self {
         self.props.retain(|(k, _)| k != "uncontained");
         self.props.push(("uncontained".to_string(), PropValue::Bool(true)));
@@ -75,10 +71,6 @@ impl Grid {
         self.props.push(("item_min_width".to_string(), PropValue::Int(actual_min)));
         self.props.push(("item_max_width".to_string(), PropValue::Int(actual_max)));
         self
-    }
-    #[allow(non_snake_case)]
-    pub fn itemWidth(self, min: u32, max: u32) -> Self {
-        self.item_width(min, max)
     }
     pub fn child(mut self, child: impl IntoNode) -> Self {
         self.children.push(child.into_node());

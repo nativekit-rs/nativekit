@@ -419,3 +419,142 @@ pub mod __props {
         IconNameProps,
     );
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Color(pub String);
+
+impl Default for Color {
+    fn default() -> Self {
+        Self("primary".to_string())
+    }
+}
+
+impl Color {
+    #[doc(hidden)]
+    pub const fn __nk_enum_opts() -> __props::ColorProps {
+        __props::color
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for Color {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for Color {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<__props::ColorProps> for Color {
+    fn from(_: __props::ColorProps) -> Self {
+        Self::default()
+    }
+}
+
+impl From<Color> for String {
+    fn from(c: Color) -> String {
+        c.0
+    }
+}
+
+impl crate::engine::primitives::color::IntoBackground for Color {
+    fn into_background(self) -> crate::engine::primitives::color::BackgroundValue {
+        crate::engine::primitives::color::BackgroundValue::Solid(self.0)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Font(pub String);
+
+impl Default for Font {
+    fn default() -> Self {
+        Self("body".to_string())
+    }
+}
+
+impl Font {
+    #[doc(hidden)]
+    pub const fn __nk_enum_opts() -> __props::FontProps {
+        __props::font
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for Font {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for Font {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<__props::FontProps> for Font {
+    fn from(_: __props::FontProps) -> Self {
+        Self::default()
+    }
+}
+
+impl From<Font> for String {
+    fn from(f: Font) -> String {
+        f.0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IconName(pub String);
+
+impl Default for IconName {
+    fn default() -> Self {
+        Self("sparkles".to_string())
+    }
+}
+
+impl IconName {
+    #[doc(hidden)]
+    pub const fn __nk_enum_opts() -> __props::IconNameProps {
+        __props::icon
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl From<&str> for IconName {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl From<String> for IconName {
+    fn from(s: String) -> Self {
+        Self(s)
+    }
+}
+
+impl From<__props::IconNameProps> for IconName {
+    fn from(_: __props::IconNameProps) -> Self {
+        Self::default()
+    }
+}
+
+impl From<IconName> for String {
+    fn from(i: IconName) -> String {
+        i.0
+    }
+}
+

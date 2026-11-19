@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-use native_kit::*;
 
 pub fn Form1Screen() -> impl IntoNode {
   Return! {

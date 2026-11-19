@@ -53,10 +53,6 @@ impl Image {
         self.props.push(("aspect_ratio".to_string(), PropValue::String(format!("{:.4}", ratio.into_aspect_ratio()))));
         self
     }
-    #[allow(non_snake_case)]
-    pub fn aspectRatio(self, ratio: impl IntoAspectRatio) -> Self {
-        self.aspect_ratio(ratio)
-    }
 }
 impl IntoNode for Image {
     fn into_node(self) -> Node {

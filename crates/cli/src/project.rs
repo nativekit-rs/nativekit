@@ -156,9 +156,14 @@ fn emit_inline_dir_modules(dir: &Path, indent: usize, out: &mut String) {
             if !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
                 continue;
             }
+            let rel_path = path
+                .strip_prefix(path.ancestors().find(|a| a.ends_with("src")).unwrap_or(dir))
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             out.push_str(&format!(
-                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {};\n{}pub use {}::*;\n",
-                pad, pad, stem, pad, stem
+                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {} {{\n{}    #[allow(unused_imports)]\n{}    use ::native_kit::*;\n{}    #[allow(unused_imports)]\n{}    use crate::__nk_auto::*;\n{}    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/{}\"));\n{}}}\n{}pub use {}::*;\n",
+                pad, pad, stem, pad, pad, pad, pad, pad, rel_path, pad, pad, stem
             ));
         }
     }

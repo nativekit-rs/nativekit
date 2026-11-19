@@ -1,5 +1,4 @@
 #![allow(non_snake_case)]
-use crate::pages::*;
 use crate::showcases::*;
 use native_kit::*;
 
@@ -25,14 +24,6 @@ impl Default for Store {
 pub type AppState = Store;
 
 pub fn App() -> impl IntoNode {
-    let store = Store::current();
-    // let (tab1_title, tab2_title) = match store.active_showcase.as_str() {
-    //     "NovaPay (FinTech)" => ("Wallet", "Activity"),
-    //     "Kona Craft (Commerce)" => ("Menu", "Orders"),
-    //     "Pulse AI (SaaS)" => ("Studio", "Runs"),
-    //     _ => ("Home", "Orders"),
-    // };
-
     Router!({
         Route!("/", HomeScreen()).tab("Home", "house"),
         Route!("/orders", OrdersScreen()).tab("Order", "coffee"),

@@ -1,6 +1,3 @@
-#![allow(non_snake_case)]
-use crate::app::Store;
-use native_kit::*;
 
 pub fn HomeScreen() -> impl IntoNode {
   let store = Store::current();
@@ -98,6 +95,23 @@ pub fn HomeScreen() -> impl IntoNode {
           Button("Increment")
             .variant(.primary)
             .action(|store: &mut Store| store.count += 1)
+        }
+
+        Avatar
+          .variant(.glass)
+          .size(44)
+          .background(.purple)
+          .initials("BK")
+          .full_name("Bradley Kounter")
+          .header(
+            HStack.spacing(6) {
+              Icon(.sparkles).color(.purple).size(16)
+              Text("Custom #[component] Slot Header").font(.caption1).color(.text_secondary)
+            }
+          )
+          .on_press(|store: &mut Store| store.count += 10)
+        {
+          Text("Passed as children into Avatar!").font(.footnote).color(.text_secondary)
         }
 
         Button("Open Sheet")

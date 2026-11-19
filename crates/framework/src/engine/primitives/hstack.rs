@@ -112,11 +112,6 @@ impl HStack {
         self
     }
 
-    #[allow(non_snake_case)]
-    pub fn backgroundImage(self, img: impl crate::engine::primitives::color::IntoBackgroundImage) -> Self {
-        self.background_image(img)
-    }
-
     pub fn padding(mut self, padding: u32) -> Self {
         self.props.retain(|(k, _)| k != "padding");
         self.props.push(("padding".to_string(), PropValue::Int(padding)));

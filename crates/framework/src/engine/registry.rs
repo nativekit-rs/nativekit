@@ -22,6 +22,20 @@ impl Action {
     pub fn is_some(&self) -> bool {
         self.0.is_some()
     }
+
+    pub fn emit(&self) {
+        if let Some(ref f) = self.0 {
+            let mut unit = ();
+            f(&mut unit, None);
+        }
+    }
+
+    pub fn emit_with(&self, val: impl Into<Value>) {
+        if let Some(ref f) = self.0 {
+            let mut unit = ();
+            f(&mut unit, Some(val.into()));
+        }
+    }
 }
 
 impl ActionHandler<(), ()> for Action {

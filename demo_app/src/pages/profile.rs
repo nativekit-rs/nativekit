@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-use native_kit::*;
 
 pub fn ProfileScreen(user_id: &str) -> impl IntoNode {
   Return! {

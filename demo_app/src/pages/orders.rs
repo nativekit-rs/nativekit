@@ -1,5 +1,3 @@
-#![allow(non_snake_case)]
-use native_kit::*;
 
 pub fn OrdersScreen() -> impl IntoNode {
   let firstOrders = [
@@ -45,18 +43,18 @@ pub fn OrdersScreen() -> impl IntoNode {
       }
 
       Section.header("Your Orders") {
-        firstOrders.into_iter().map(|(id, item, price)| {
+        for (id, item, price) in firstOrders {
           Button("📦 Order #{} - {} (${})", id, item, price)
             .action(move || navigate(format!("/orders/{}", id)))
-        }).collect::<Vec<_>>()
+        }
       }
 
       Section.header("Past Orders") {
-        secondOrders.into_iter().map(|(id, item, price)| {
+        for (id, item, price) in secondOrders {
           Button("📦 Order #{} - {} (${})", id, item, price)
             .variant(.secondary)
             .action(move || navigate(format!("/orders/{}", id)))
-        }).collect::<Vec<_>>()
+        }
       }
     }
   }

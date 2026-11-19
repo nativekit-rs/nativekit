@@ -1,6 +1,3 @@
-#![allow(non_snake_case)]
-use crate::app::Store;
-use native_kit::*;
 
 pub fn PurchaseModal() -> impl IntoNode {
   let store = Store::current();

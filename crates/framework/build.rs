@@ -428,9 +428,14 @@ fn emit_inline_dir_modules(dir: &std::path::Path, indent: usize, out: &mut Strin
             if !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
                 continue;
             }
+            let rel_path = path
+                .strip_prefix(path.ancestors().find(|a| a.ends_with("src")).unwrap_or(dir))
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             out.push_str(&format!(
-                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {};\n{}pub use {}::*;\n",
-                pad, pad, stem, pad, stem
+                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {} {{\n{}    #[allow(unused_imports)]\n{}    use ::native_kit::*;\n{}    #[allow(unused_imports)]\n{}    use crate::__nk_auto::*;\n{}    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/{}\"));\n{}}}\n{}pub use {}::*;\n",
+                pad, pad, stem, pad, pad, pad, pad, pad, rel_path, pad, pad, stem
             ));
         }
     }
@@ -495,7 +500,6 @@ fn sync_app_auto_modules_in_dir(project_root: &std::path::Path) {
     let mut block = String::new();
     block.push_str(begin_marker);
     block.push('\n');
-    block.push_str("#[macro_use]\nextern crate native_kit;\n");
     for (folder, dir) in &active_folders {
         block.push_str(&format!(
             "#[allow(non_snake_case, dead_code, unused_imports)]\npub mod {} {{\n",
@@ -2395,11 +2399,6 @@ impl VStack {{
         self
     }}
 
-    #[allow(non_snake_case)]
-    pub fn backgroundImage(self, img: impl crate::engine::primitives::color::IntoBackgroundImage) -> Self {{
-        self.background_image(img)
-    }}
-
     pub fn padding(mut self, padding: u32) -> Self {{
         self.props.retain(|(k, _)| k != "padding");
         self.props.push(("padding".to_string(), PropValue::Int(padding)));
@@ -2577,11 +2576,6 @@ impl HStack {{
         self.props.retain(|(k, _)| k != "background_image");
         self.props.push(("background_image".to_string(), PropValue::String(img.into_bg_image_url())));
         self
-    }}
-
-    #[allow(non_snake_case)]
-    pub fn backgroundImage(self, img: impl crate::engine::primitives::color::IntoBackgroundImage) -> Self {{
-        self.background_image(img)
     }}
 
     pub fn padding(mut self, padding: u32) -> Self {{
