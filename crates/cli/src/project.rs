@@ -92,8 +92,43 @@ fn extract_pub_symbols(file_path: &Path) -> Vec<(String, &'static str)> {
         return Vec::new();
     };
     let mut items = Vec::new();
+    let mut inside_view_macro = false;
     for line in content.lines() {
         let trimmed = line.trim();
+        if trimmed.starts_with("View!") {
+            inside_view_macro = true;
+            let after = trimmed.trim_start_matches("View!").trim().trim_start_matches('{').trim();
+            if !after.is_empty() {
+                let clean = after.strip_prefix("pub fn ").or_else(|| after.strip_prefix("fn ")).unwrap_or(after);
+                if let Some(paren_pos) = clean.find('(') {
+                    let candidate = clean[..paren_pos].trim();
+                    if !candidate.is_empty()
+                        && candidate.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+                        && candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                    {
+                        items.push((candidate.to_string(), "value"));
+                        items.push((candidate.to_string(), "type"));
+                        inside_view_macro = false;
+                    }
+                }
+            }
+            continue;
+        }
+        if inside_view_macro && !trimmed.is_empty() && !trimmed.starts_with("//") && !trimmed.starts_with('#') {
+            let clean = trimmed.strip_prefix("pub fn ").or_else(|| trimmed.strip_prefix("fn ")).unwrap_or(trimmed);
+            if let Some(paren_pos) = clean.find('(') {
+                let candidate = clean[..paren_pos].trim();
+                if !candidate.is_empty()
+                    && candidate.chars().next().map(|c| c.is_ascii_uppercase()).unwrap_or(false)
+                    && candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+                {
+                    items.push((candidate.to_string(), "value"));
+                    items.push((candidate.to_string(), "type"));
+                }
+            }
+            inside_view_macro = false;
+            continue;
+        }
         for (prefix, ns) in [
             ("pub fn ", "value"),
             ("pub struct ", "type"),
@@ -156,14 +191,9 @@ fn emit_inline_dir_modules(dir: &Path, indent: usize, out: &mut String) {
             if !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
                 continue;
             }
-            let rel_path = path
-                .strip_prefix(path.ancestors().find(|a| a.ends_with("src")).unwrap_or(dir))
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
             out.push_str(&format!(
-                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {} {{\n{}    #[allow(unused_imports)]\n{}    use ::native_kit::*;\n{}    #[allow(unused_imports)]\n{}    use crate::__nk_auto::*;\n{}    include!(concat!(env!(\"CARGO_MANIFEST_DIR\"), \"/src/{}\"));\n{}}}\n{}pub use {}::*;\n",
-                pad, pad, stem, pad, pad, pad, pad, pad, rel_path, pad, pad, stem
+                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {};\n{}pub use {}::*;\n",
+                pad, pad, stem, pad, stem
             ));
         }
     }
@@ -229,6 +259,7 @@ pub fn sync_auto_modules_in_dir(root: &Path) {
     let mut block = String::new();
     block.push_str(begin_marker);
     block.push('\n');
+    block.push_str("#[allow(unused_imports)]\n#[macro_use]\nextern crate native_kit;\n");
     for (folder, dir) in &active_folders {
         block.push_str(&format!(
             "#[allow(non_snake_case, dead_code, unused_imports)]\npub mod {} {{\n",

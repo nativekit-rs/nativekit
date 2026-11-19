@@ -1,3 +1,5 @@
+use crate::Store;
+use native_kit::*;
 
 pub fn DetailsScreen() -> impl IntoNode {
   let store = Store::current();

@@ -313,6 +313,12 @@ fn normalize_friendly_type(ty: Type) -> Type {
                     "Icon" | "IconName" => {
                         return syn::parse2(quote! { ::native_kit::IconName }).unwrap();
                     }
+                    "Action" => {
+                        return syn::parse2(quote! { ::native_kit::Action }).unwrap();
+                    }
+                    "Children" => {
+                        return syn::parse2(quote! { ::native_kit::Children }).unwrap();
+                    }
                     "Option" | "Vec" => {
                         if let syn::PathArguments::AngleBracketed(ref mut args) = last_seg.arguments
                         {
@@ -836,11 +842,6 @@ fn is_valid_snake_case_ident(s: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
-#[proc_macro]
-pub fn Component(input: TokenStream) -> TokenStream {
-    expand_component(TokenStream::new(), input)
-}
-
 #[proc_macro_attribute]
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_component(attr, item)
@@ -851,48 +852,62 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let tokens: Vec<TokenTree> = item2.into_iter().collect();
     let attr_tokens: Vec<TokenTree> = TokenStream2::from(attr).into_iter().collect();
 
-    // Find the last Brace group `{ ... }` as the function body
-    let Some(last_idx) = tokens
-        .iter()
-        .rposition(|t| matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Brace))
-    else {
-        return TokenStream::from(
-            quote! { compile_error!("Expected function body `{ ... }` in #[component]"); },
-        );
-    };
-
-    let body_group = match &tokens[last_idx] {
-        TokenTree::Group(g) => g.clone(),
-        _ => unreachable!(),
-    };
-
-    // Find the parameter Parenthesis group `( ... )` in the header before the body
-    let header_tokens = &tokens[..last_idx];
-    let Some(paren_idx) = header_tokens
+    // Find the parameter Parenthesis group `( ... )` in the header
+    let Some(paren_idx) = tokens
         .iter()
         .position(|t| matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis))
     else {
         return TokenStream::from(TokenStream2::from_iter(tokens));
     };
 
-    let param_group = match &header_tokens[paren_idx] {
+    let param_group = match &tokens[paren_idx] {
         TokenTree::Group(g) => g.clone(),
         _ => unreachable!(),
     };
 
+    let prefix_tokens = &tokens[..paren_idx];
+    let after_paren = &tokens[paren_idx + 1..];
+
+    // Support both Layout B (`View! { Card(...) let ... VStack { ... } }`)
+    // and traditional (`View! { Card(...) { ... } }` or `#[component] pub fn Card(...) { ... }`)
+    let (ret_sig_tokens, raw_body_tokens): (Vec<TokenTree>, Vec<TokenTree>) =
+        if after_paren.len() == 1
+            && matches!(after_paren.first(), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace)
+        {
+            if let TokenTree::Group(g) = &after_paren[0] {
+                (Vec::new(), g.stream().into_iter().collect())
+            } else {
+                unreachable!()
+            }
+        } else if after_paren.len() >= 3
+            && matches!(after_paren.first(), Some(TokenTree::Punct(p)) if p.as_char() == '-')
+            && matches!(after_paren.get(1), Some(TokenTree::Punct(p)) if p.as_char() == '>')
+            && matches!(after_paren.last(), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Brace)
+        {
+            let last_i = after_paren.len() - 1;
+            let body = if let TokenTree::Group(g) = &after_paren[last_i] {
+                g.stream().into_iter().collect()
+            } else {
+                Vec::new()
+            };
+            (after_paren[..last_i].to_vec(), body)
+        } else {
+            (Vec::new(), after_paren.to_vec())
+        };
+
     // Build a clean Rust signature without custom `= default` or `.a | .b` inside `(...)` so `syn` always parses it
     let mut clean_sig_tokens = TokenStream2::new();
-    let has_fn_kw = header_tokens[..paren_idx]
+    let has_fn_kw = prefix_tokens
         .iter()
         .any(|t| matches!(t, TokenTree::Ident(id) if id == "fn"));
     if has_fn_kw {
-        clean_sig_tokens.extend(header_tokens[..paren_idx].iter().cloned());
+        clean_sig_tokens.extend(prefix_tokens.iter().cloned());
     } else {
         clean_sig_tokens.extend(quote! { pub fn });
-        clean_sig_tokens.extend(header_tokens[..paren_idx].iter().cloned());
+        clean_sig_tokens.extend(prefix_tokens.iter().cloned());
     }
     clean_sig_tokens.extend(quote! { () });
-    clean_sig_tokens.extend(header_tokens[paren_idx + 1..].iter().cloned());
+    clean_sig_tokens.extend(ret_sig_tokens.into_iter());
     clean_sig_tokens.extend(quote! { {} });
 
     let Ok(sig_fn) = syn::parse2::<ItemFn>(clean_sig_tokens) else {
@@ -974,7 +989,6 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let raw_body_tokens: Vec<TokenTree> = body_group.stream().into_iter().collect();
     let transformed_body = expand_component_body(&raw_body_tokens, &parsed_params, fn_name);
 
     let mut field_defs = Vec::new();
@@ -1554,9 +1568,52 @@ pub fn Page(input: TokenStream) -> TokenStream {
     expand_container_macro("Page", input)
 }
 
+fn is_view_component_definition(tokens: &[TokenTree]) -> bool {
+    let mut idx = 0;
+    while idx < tokens.len() {
+        if matches!(&tokens[idx], TokenTree::Punct(p) if p.as_char() == '#') {
+            idx += 2;
+            continue;
+        }
+        break;
+    }
+    if matches!(tokens.get(idx), Some(TokenTree::Ident(id)) if id == "pub") {
+        idx += 1;
+        if matches!(tokens.get(idx), Some(TokenTree::Group(g)) if g.delimiter() == Delimiter::Parenthesis) {
+            idx += 1;
+        }
+    }
+    let has_fn = if matches!(tokens.get(idx), Some(TokenTree::Ident(id)) if id == "fn") {
+        idx += 1;
+        true
+    } else {
+        false
+    };
+    let Some(TokenTree::Ident(name_id)) = tokens.get(idx) else {
+        return false;
+    };
+    let name_str = name_id.to_string();
+    let Some(TokenTree::Group(g)) = tokens.get(idx + 1) else {
+        return false;
+    };
+    if g.delimiter() != Delimiter::Parenthesis {
+        return false;
+    }
+    if has_fn {
+        return true;
+    }
+    is_custom_component_ident(&name_str) && tokens.len() > idx + 2
+}
+
 #[proc_macro]
 pub fn View(input: TokenStream) -> TokenStream {
-    expand_view_macro(input)
+    let ts2 = TokenStream2::from(input.clone());
+    let tokens: Vec<TokenTree> = ts2.into_iter().collect();
+    if is_view_component_definition(&tokens) {
+        expand_component(TokenStream::new(), input)
+    } else {
+        expand_view_macro(input)
+    }
 }
 
 #[proc_macro]
@@ -1645,6 +1702,8 @@ fn expand_view_macro(input: TokenStream) -> TokenStream {
     }
     TokenStream::from(quote! {
         {
+            #[allow(unused_imports)]
+            use ::native_kit::*;
             #[allow(unused_imports)]
             use crate::__nk_auto::*;
             #prefix_stmts

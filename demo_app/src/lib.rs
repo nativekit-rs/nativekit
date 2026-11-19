@@ -1,98 +1,41 @@
 // BEGIN_NK_AUTO_MODULES
+#[allow(unused_imports)]
+#[macro_use]
+extern crate native_kit;
 #[allow(non_snake_case, dead_code, unused_imports)]
 pub mod pages {
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod demo_sheets {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/demo_sheets.rs"));
-    }
+    pub mod demo_sheets;
     pub use demo_sheets::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod details {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/details.rs"));
-    }
+    pub mod details;
     pub use details::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod home {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/home.rs"));
-    }
+    pub mod home;
     pub use home::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod orders {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/orders.rs"));
-    }
+    pub mod orders;
     pub use orders::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod profile {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/profile.rs"));
-    }
+    pub mod profile;
     pub use profile::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod purchase {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/purchase.rs"));
-    }
+    pub mod purchase;
     pub use purchase::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod settings {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/pages/settings.rs"));
-    }
+    pub mod settings;
     pub use settings::*;
 }
 #[allow(non_snake_case, dead_code, unused_imports)]
 pub mod views {
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod avatar {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/views/avatar.rs"));
-    }
+    pub mod avatar;
     pub use avatar::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod custom_greeting {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/views/custom_greeting.rs"));
-    }
+    pub mod custom_greeting;
     pub use custom_greeting::*;
     #[allow(non_snake_case, dead_code, unused_imports)]
-    pub mod navbar {
-        #[allow(unused_imports)]
-        use ::native_kit::*;
-        #[allow(unused_imports)]
-        use crate::__nk_auto::*;
-        include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/views/navbar.rs"));
-    }
+    pub mod navbar;
     pub use navbar::*;
 }
 #[allow(non_snake_case, dead_code, unused_imports)]

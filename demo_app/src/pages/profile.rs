@@ -1,3 +1,5 @@
+use crate::Store;
+use native_kit::*;
 
 pub fn ProfileScreen(user_id: &str) -> impl IntoNode {
   Return! {
