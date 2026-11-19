@@ -341,6 +341,206 @@ fn builtin_web_svg(name: &str) -> &'static str {
     }
 }
 
+fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+    for path in paths {
+        if path.is_dir() {
+            collect_rs_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if fname != "mod.rs" && fname != "lib.rs" && fname != "main.rs" {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn extract_pub_symbols(file_path: &std::path::Path) -> Vec<(String, &'static str)> {
+    let Ok(content) = fs::read_to_string(file_path) else {
+        return Vec::new();
+    };
+    let mut items = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        for (prefix, ns) in [
+            ("pub fn ", "value"),
+            ("pub struct ", "type"),
+            ("pub enum ", "type"),
+            ("pub type ", "type"),
+            ("pub const ", "value"),
+        ] {
+            if let Some(rest) = trimmed.strip_prefix(prefix) {
+                let name: String = rest
+                    .chars()
+                    .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                    .collect();
+                if !name.is_empty() {
+                    items.push((name, ns));
+                }
+            }
+        }
+    }
+    items
+}
+
+fn emit_inline_dir_modules(dir: &std::path::Path, indent: usize, out: &mut String) {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    let mut paths: Vec<PathBuf> = entries.flatten().map(|e| e.path()).collect();
+    paths.sort();
+
+    let pad = "    ".repeat(indent);
+    for path in paths {
+        if path.is_dir() {
+            let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !dir_name
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_')
+            {
+                continue;
+            }
+            let mut sub_files = Vec::new();
+            collect_rs_files(&path, &mut sub_files);
+            if sub_files.is_empty() {
+                continue;
+            }
+            out.push_str(&format!(
+                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {} {{\n",
+                pad, pad, dir_name
+            ));
+            emit_inline_dir_modules(&path, indent + 1, out);
+            out.push_str(&format!("{}}}\n{}pub use {}::*;\n", pad, pad, dir_name));
+        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+            let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if fname == "mod.rs" || fname == "lib.rs" || fname == "main.rs" {
+                continue;
+            }
+            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if !stem.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                continue;
+            }
+            out.push_str(&format!(
+                "{}#[allow(non_snake_case, dead_code, unused_imports)]\n{}pub mod {};\n{}pub use {}::*;\n",
+                pad, pad, stem, pad, stem
+            ));
+        }
+    }
+}
+
+fn sync_app_auto_modules_in_dir(project_root: &std::path::Path) {
+    let src_dir = project_root.join("src");
+    let lib_rs = src_dir.join("lib.rs");
+    if !lib_rs.exists() {
+        return;
+    }
+    let Ok(lib_content) = fs::read_to_string(&lib_rs) else {
+        return;
+    };
+    if !lib_content.contains("export_app!") {
+        return;
+    }
+
+    let mut files = Vec::new();
+    let mut active_folders = Vec::new();
+    for folder in ["components", "pages", "views"] {
+        let dir = src_dir.join(folder);
+        if dir.exists() && dir.is_dir() {
+            println!("cargo:rerun-if-changed={}", dir.display());
+            if dir.join("mod.rs").exists() && lib_content.contains(&format!("pub mod {};", folder)) {
+                continue;
+            }
+            let mut folder_files = Vec::new();
+            collect_rs_files(&dir, &mut folder_files);
+            if !folder_files.is_empty() {
+                active_folders.push((folder, dir));
+                files.extend(folder_files);
+            }
+        }
+    }
+
+    let mut seen: std::collections::HashMap<(String, &'static str), String> =
+        std::collections::HashMap::new();
+    let mut clash_lines = Vec::new();
+    for file in &files {
+        println!("cargo:rerun-if-changed={}", file.display());
+        let rel_display = file
+            .strip_prefix(project_root)
+            .unwrap_or(file)
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (sym_name, ns) in extract_pub_symbols(file) {
+            if let Some(prev_file) = seen.insert((sym_name.clone(), ns), rel_display.clone()) {
+                if prev_file != rel_display {
+                    clash_lines.push(format!(
+                        "    compile_error!(\"Duplicate public `{}` found in both `{}` and `{}`. Please give each component/page a unique name.\");",
+                        sym_name, prev_file, rel_display
+                    ));
+                }
+            }
+        }
+    }
+
+    let begin_marker = "// BEGIN_NK_AUTO_MODULES";
+    let end_marker = "// END_NK_AUTO_MODULES";
+
+    let mut block = String::new();
+    block.push_str(begin_marker);
+    block.push('\n');
+    block.push_str("#[macro_use]\nextern crate native_kit;\n");
+    for (folder, dir) in &active_folders {
+        block.push_str(&format!(
+            "#[allow(non_snake_case, dead_code, unused_imports)]\npub mod {} {{\n",
+            folder
+        ));
+        emit_inline_dir_modules(dir, 1, &mut block);
+        block.push_str("}\n");
+    }
+    block.push_str("#[allow(non_snake_case, dead_code, unused_imports)]\npub mod __nk_auto {\n");
+    for err in &clash_lines {
+        block.push_str(err);
+        block.push('\n');
+    }
+    if clash_lines.is_empty() {
+        block.push_str("    pub use super::app::Store;\n");
+        for (folder, _) in &active_folders {
+            block.push_str(&format!("    pub use super::{}::*;\n", folder));
+        }
+    }
+    block.push_str("}\n#[allow(unused_imports)]\npub use __nk_auto::*;\n");
+    block.push_str(end_marker);
+
+    let updated = if let (Some(s), Some(e)) = (
+        lib_content.find(begin_marker),
+        lib_content.find(end_marker),
+    ) {
+        if s < e {
+            format!(
+                "{}{}{}",
+                &lib_content[..s],
+                block,
+                &lib_content[e + end_marker.len()..]
+            )
+        } else {
+            lib_content.clone()
+        }
+    } else {
+        format!("{}\n\n{}\n", block, lib_content.trim_start())
+    };
+
+    if updated != lib_content {
+        let _ = fs::write(&lib_rs, updated);
+    }
+}
+
 fn main() {
     if let Ok(out) = std::process::Command::new("defaults").args(["read", "-g", "AppleAccentColor"]).output() {
         if out.status.success() {
@@ -355,7 +555,30 @@ fn main() {
     println!("cargo:rustc-check-cfg=cfg(wasm_bindgen_unstable_test_coverage)");
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    println!("cargo:rerun-if-changed=build.rs");
     let primitives_dir = manifest_dir.join("src/engine/primitives");
+
+    let mut candidate_roots = vec![
+        PathBuf::from("."),
+        PathBuf::from("../../demo_app"),
+        PathBuf::from("../demo_app"),
+        PathBuf::from("demo_app"),
+    ];
+    if let Ok(out_dir) = env::var("OUT_DIR") {
+        // OUT_DIR is `<project_root>/target/<profile>/build/native-kit-<hash>/out`
+        // Walk up ancestors to find `<project_root>` containing `src/lib.rs`
+        let out_path = PathBuf::from(out_dir);
+        for ancestor in out_path.ancestors() {
+            if ancestor.join("src/lib.rs").exists() && ancestor != manifest_dir {
+                candidate_roots.push(ancestor.to_path_buf());
+            }
+        }
+    }
+    for p in candidate_roots {
+        if p.join("src/lib.rs").exists() && p != manifest_dir {
+            sync_app_auto_modules_in_dir(&p);
+        }
+    }
 
     for dir_cand in ["src/components", "src/pages", "../../demo_app/src/components", "../../demo_app/src/pages"] {
         let p = PathBuf::from(dir_cand);

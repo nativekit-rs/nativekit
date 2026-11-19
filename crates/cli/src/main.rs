@@ -210,6 +210,7 @@ fn get_dir_max_mtime(dir: &Path) -> SystemTime {
 }
 
 pub fn generate_all_projects() {
+    project::sync_auto_modules();
     generate_ios_project();
     generate_android_project();
     generate_web_project();
@@ -642,11 +643,8 @@ fn main() {
 
                         let start_time = SystemTime::now();
 
-                        // Touch src/lib.rs if it exists so proc-macros like `auto_import!()` re-scan new/deleted files
-                        let lib_rs = project::project_path("src/lib.rs");
-                        if let Ok(lib_content) = std::fs::read(&lib_rs) {
-                            let _ = std::fs::write(&lib_rs, lib_content);
-                        }
+                        // Sync auto-discovered modules in src/lib.rs when files in src/{components,pages,views} change
+                        project::sync_auto_modules();
 
                         if !use_dylib_host {
                             if let Ok(mut lock) = child_ref_clone2.lock() {

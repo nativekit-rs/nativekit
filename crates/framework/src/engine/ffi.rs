@@ -2,8 +2,6 @@
 #[macro_export]
 macro_rules! export_app {
     ($app_type:ty) => {
-        $crate::auto_import!();
-
         use std::ffi::{CStr, CString};
         use std::os::raw::c_char;
         use std::os::raw::c_void;

@@ -1,7 +1,7 @@
-#![allow(non_snake_case)]
 use native_kit::*;
 
-pub fn QuickActionSheet() -> impl IntoNode {
+#[component]
+pub fn QuickActionSheet() {
     Return! {
         Page.title("Quick Action") {
             Section {

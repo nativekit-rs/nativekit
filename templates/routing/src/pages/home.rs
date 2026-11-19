@@ -1,8 +1,7 @@
-#![allow(non_snake_case)]
-use crate::app::Store;
 use native_kit::*;
 
-pub fn HomeScreen() -> impl IntoNode {
+#[component]
+pub fn HomeScreen() {
     let state = use_state::<Store>();
     let count = state.count;
 

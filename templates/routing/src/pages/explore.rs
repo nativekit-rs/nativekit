@@ -1,7 +1,7 @@
-#![allow(non_snake_case)]
 use native_kit::*;
 
-pub fn ExploreScreen() -> impl IntoNode {
+#[component]
+pub fn ExploreScreen() {
     Return! {
         Page.title("Explore").large_title(true).top_style(.soft) {
             Section.header("Featured") {

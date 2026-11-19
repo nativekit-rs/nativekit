@@ -278,7 +278,8 @@ pub fn App() -> impl IntoNode {
     })
 }
 
-pub fn HomeScreen() -> impl IntoNode {
+#[component]
+pub fn HomeScreen() {
     let state = use_state::<Store>();
     let count = state.count;
 
@@ -489,6 +490,9 @@ Learn more at **[https://nativekit.rs](https://nativekit.rs)**.
             );
         }
     }
+
+    // Sync auto-discovered modules in `src/lib.rs` so IDE autocomplete works immediately upon opening the project
+    crate::project::sync_auto_modules_in_dir(&target_dir);
 
     println!("\n✅ \x1B[1;32mCreated `{}`!\x1B[0m", raw_name);
     println!("\nNext steps:");

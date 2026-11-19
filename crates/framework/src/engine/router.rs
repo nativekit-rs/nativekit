@@ -650,7 +650,7 @@ macro_rules! Route {
 macro_rules! Router {
     ({ $($route:expr),* $(,)? }) => {{
         #[allow(unused_imports)]
-        use crate::*;
+        use crate::__nk_auto::*;
         let router = $crate::engine::router::global_router().lock().unwrap().clone();
         $crate::Router!(__global, router => { $($route),* })
     }};

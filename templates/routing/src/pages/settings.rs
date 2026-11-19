@@ -1,8 +1,7 @@
-#![allow(non_snake_case)]
-use crate::app::Store;
 use native_kit::*;
 
-pub fn SettingsScreen() -> impl IntoNode {
+#[component]
+pub fn SettingsScreen() {
     let state = use_state::<Store>();
     let enabled = state.notifications_enabled;
 

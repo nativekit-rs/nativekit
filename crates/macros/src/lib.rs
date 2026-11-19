@@ -2,9 +2,7 @@
 use proc_macro::TokenStream;
 use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
-use std::collections::HashMap;
-use std::path::Path;
-use syn::{parse_macro_input, FnArg, ItemFn, Pat, ReturnType, Type};
+use syn::{parse_macro_input, ItemEnum, ItemFn, ReturnType, Type};
 
 fn is_bool_type(ty: &Type) -> bool {
     if let Type::Path(tp) = ty {
@@ -13,6 +11,218 @@ fn is_bool_type(ty: &Type) -> bool {
         }
     }
     false
+}
+
+fn is_action_type(ty: &Type) -> bool {
+    if let Type::Path(tp) = ty {
+        if let Some(last_seg) = tp.path.segments.last() {
+            return last_seg.ident == "Action";
+        }
+    }
+    false
+}
+
+fn generate_prop_enum_helpers(item_enum: &ItemEnum, emit_default_impl: bool) -> TokenStream2 {
+    let enum_name = &item_enum.ident;
+    let enum_vis = &item_enum.vis;
+    let opts_struct_ident = Ident::new(&format!("__NkEnumOpts_{}", enum_name), enum_name.span());
+    let mut struct_fields = Vec::new();
+    let mut struct_inits = Vec::new();
+    let mut from_str_arms = Vec::new();
+    let mut u32_conv_arms = Vec::new();
+    let mut i32_conv_arms = Vec::new();
+    let mut str_tuple_variant: Option<Ident> = None;
+
+    let mut default_variant_ident: Option<Ident> = None;
+    for variant in &item_enum.variants {
+        let has_default_attr = variant.attrs.iter().any(|a| a.path().is_ident("default"));
+        if has_default_attr && variant.fields.is_empty() {
+            default_variant_ident = Some(variant.ident.clone());
+            break;
+        }
+    }
+    if default_variant_ident.is_none() {
+        for variant in &item_enum.variants {
+            if variant.fields.is_empty() {
+                default_variant_ident = Some(variant.ident.clone());
+                break;
+            }
+        }
+    }
+
+    for variant in &item_enum.variants {
+        let v_ident = &variant.ident;
+        match &variant.fields {
+            syn::Fields::Unit => {
+                let v_str = v_ident.to_string();
+                let snake_name = camel_to_snake(&v_str);
+
+                struct_fields.push(quote! {
+                    pub #v_ident: #enum_name
+                });
+
+                struct_inits.push(quote! {
+                    #v_ident: #enum_name::#v_ident
+                });
+
+                from_str_arms.push(quote! {
+                    #v_str | #snake_name => Self::#v_ident,
+                });
+
+                if let Some((_, ref expr)) = variant.discriminant {
+                    u32_conv_arms.push(quote! {
+                        x if x == (#expr as u32) => Self::#v_ident,
+                    });
+                    i32_conv_arms.push(quote! {
+                        x if x == (#expr as i32) => Self::#v_ident,
+                    });
+                }
+            }
+            syn::Fields::Unnamed(unnamed) if unnamed.unnamed.len() == 1 => {
+                let field_ty = &unnamed.unnamed.first().unwrap().ty;
+                if let Type::Path(tp) = field_ty {
+                    if let Some(last_seg) = tp.path.segments.last() {
+                        let ty_name = last_seg.ident.to_string();
+                        match ty_name.as_str() {
+                            "u32" => {
+                                u32_conv_arms.push(quote! {
+                                    val => Self::#v_ident(val),
+                                });
+                                i32_conv_arms.push(quote! {
+                                    val => Self::#v_ident(val.max(0) as u32),
+                                });
+                            }
+                            "i32" => {
+                                i32_conv_arms.push(quote! {
+                                    val => Self::#v_ident(val),
+                                });
+                                u32_conv_arms.push(quote! {
+                                    val => Self::#v_ident(val as i32),
+                                });
+                            }
+                            "String" => {
+                                str_tuple_variant = Some(v_ident.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let default_impl = if emit_default_impl {
+        if let Some(def_v) = default_variant_ident {
+            quote! {
+                impl ::std::default::Default for #enum_name {
+                    fn default() -> Self {
+                        Self::#def_v
+                    }
+                }
+            }
+        } else {
+            TokenStream2::new()
+        }
+    } else {
+        TokenStream2::new()
+    };
+
+    let str_fallback = if let Some(ref sv) = str_tuple_variant {
+        quote! { other => Self::#sv(other.to_string()), }
+    } else {
+        quote! { _ => ::std::default::Default::default(), }
+    };
+
+    let num_impls = if !u32_conv_arms.is_empty() {
+        quote! {
+            impl ::std::convert::From<u32> for #enum_name {
+                fn from(v: u32) -> Self {
+                    match v {
+                        #( #u32_conv_arms )*
+                        _ => ::std::default::Default::default(),
+                    }
+                }
+            }
+            impl ::std::convert::From<i32> for #enum_name {
+                fn from(v: i32) -> Self {
+                    match v {
+                        #( #i32_conv_arms )*
+                        _ => ::std::default::Default::default(),
+                    }
+                }
+            }
+        }
+    } else {
+        TokenStream2::new()
+    };
+
+    quote! {
+        #default_impl
+
+        #[allow(non_camel_case_types, non_snake_case, dead_code)]
+        #enum_vis struct #opts_struct_ident {
+            #( #struct_fields ),*
+        }
+
+        impl ::std::convert::From<#opts_struct_ident> for #enum_name {
+            fn from(_: #opts_struct_ident) -> Self {
+                ::std::default::Default::default()
+            }
+        }
+
+        impl #enum_name {
+            #[doc(hidden)]
+            pub const fn __nk_enum_opts() -> #opts_struct_ident {
+                #opts_struct_ident {
+                    #( #struct_inits ),*
+                }
+            }
+        }
+
+        impl ::std::convert::From<&str> for #enum_name {
+            fn from(s: &str) -> Self {
+                match s {
+                    #( #from_str_arms )*
+                    #str_fallback
+                }
+            }
+        }
+
+        impl ::std::convert::From<String> for #enum_name {
+            fn from(s: String) -> Self {
+                Self::from(s.as_str())
+            }
+        }
+
+        #num_impls
+    }
+}
+
+#[proc_macro_derive(PropEnum)]
+pub fn derive_prop_enum(item: TokenStream) -> TokenStream {
+    let parsed = parse_macro_input!(item as ItemEnum);
+    TokenStream::from(generate_prop_enum_helpers(&parsed, false))
+}
+
+#[proc_macro_attribute]
+pub fn prop(attr: TokenStream, item: TokenStream) -> TokenStream {
+    prop_enum(attr, item)
+}
+
+#[proc_macro_attribute]
+pub fn prop_enum(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut parsed = parse_macro_input!(item as ItemEnum);
+    let helpers = generate_prop_enum_helpers(&parsed, true);
+    // Strip any `#[default]` attributes on variants since we generate `impl Default` directly
+    for v in &mut parsed.variants {
+        v.attrs.retain(|a| !a.path().is_ident("default"));
+    }
+    TokenStream::from(quote! {
+        #[derive(Clone, Debug, PartialEq)]
+        #parsed
+        #helpers
+    })
 }
 
 fn snake_to_camel(s: &str) -> String {
@@ -29,6 +239,277 @@ fn snake_to_camel(s: &str) -> String {
         }
     }
     out
+}
+
+fn transform_match_arms(tokens: &[TokenTree]) -> TokenStream2 {
+    let mut out = TokenStream2::new();
+    let mut idx = 0;
+    let mut at_arm_start = true;
+
+    while idx < tokens.len() {
+        // Check for `=>`
+        if idx + 1 < tokens.len() {
+            if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) = (&tokens[idx], &tokens[idx + 1]) {
+                if p1.as_char() == '=' && p2.as_char() == '>' {
+                    out.extend([tokens[idx].clone(), tokens[idx + 1].clone()]);
+                    idx += 2;
+
+                    // Parse arm body up to top-level `,` or after a `{ ... }` block
+                    if idx < tokens.len() {
+                        if let TokenTree::Group(g) = &tokens[idx] {
+                            if g.delimiter() == Delimiter::Brace {
+                                let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                                let t_inner = transform_rust_tokens(&inner);
+                                let mut ng = Group::new(Delimiter::Brace, t_inner);
+                                ng.set_span(g.span());
+                                out.extend(std::iter::once(TokenTree::Group(ng)));
+                                idx += 1;
+                                if idx < tokens.len() {
+                                    if let TokenTree::Punct(comma) = &tokens[idx] {
+                                        if comma.as_char() == ',' {
+                                            out.extend(std::iter::once(tokens[idx].clone()));
+                                            idx += 1;
+                                        }
+                                    }
+                                }
+                                at_arm_start = true;
+                                continue;
+                            }
+                        }
+                    }
+
+                    let mut arm_expr = Vec::new();
+                    while idx < tokens.len() {
+                        if let TokenTree::Punct(p) = &tokens[idx] {
+                            if p.as_char() == ',' {
+                                break;
+                            }
+                        }
+                        arm_expr.push(tokens[idx].clone());
+                        idx += 1;
+                    }
+                    out.extend(transform_rust_tokens(&arm_expr));
+                    if idx < tokens.len() {
+                        out.extend(std::iter::once(tokens[idx].clone()));
+                        idx += 1;
+                    }
+                    at_arm_start = true;
+                    continue;
+                }
+            }
+        }
+
+        if at_arm_start {
+            if let TokenTree::Punct(p) = &tokens[idx] {
+                if p.as_char() == '.' {
+                    if let Some(TokenTree::Ident(var_id)) = tokens.get(idx + 1) {
+                        out.extend(quote! { Self::#var_id });
+                        idx += 2;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        out.extend(std::iter::once(tokens[idx].clone()));
+        idx += 1;
+    }
+
+    out
+}
+
+fn rewrite_match_dot_patterns_with_params(
+    tokens: &[TokenTree],
+    params: &[ParsedPropParam],
+) -> Vec<TokenTree> {
+    let mut out = Vec::new();
+    let mut idx = 0;
+
+    while idx < tokens.len() {
+        if let TokenTree::Ident(kw) = &tokens[idx] {
+            if kw == "match" {
+                out.push(tokens[idx].clone());
+                idx += 1;
+
+                let mut scrutinee_tokens = Vec::new();
+                while idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Brace {
+                            break;
+                        }
+                    }
+                    scrutinee_tokens.push(tokens[idx].clone());
+                    out.push(tokens[idx].clone());
+                    idx += 1;
+                }
+
+                let enum_ty: Option<TokenStream2> = if scrutinee_tokens.len() == 1 {
+                    if let TokenTree::Ident(scrut_ident) = &scrutinee_tokens[0] {
+                        params
+                            .iter()
+                            .find(|p| &p.ident == scrut_ident)
+                            .and_then(|p| p.ty.as_ref())
+                            .map(|ty| {
+                                let inner = extract_option_inner_type(ty).unwrap_or(ty);
+                                quote! { #inner }
+                            })
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Brace {
+                            let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                            let rewritten_arms =
+                                rewrite_match_arms_for_param(&inner, enum_ty.as_ref(), params);
+                            let mut ng = Group::new(
+                                Delimiter::Brace,
+                                TokenStream2::from_iter(rewritten_arms),
+                            );
+                            ng.set_span(g.span());
+                            out.push(TokenTree::Group(ng));
+                            idx += 1;
+                            continue;
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        if let TokenTree::Group(g) = &tokens[idx] {
+            let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+            let rewritten = rewrite_match_dot_patterns_with_params(&inner, params);
+            let mut ng = Group::new(g.delimiter(), TokenStream2::from_iter(rewritten));
+            ng.set_span(g.span());
+            out.push(TokenTree::Group(ng));
+            idx += 1;
+            continue;
+        }
+
+        out.push(tokens[idx].clone());
+        idx += 1;
+    }
+
+    out
+}
+
+fn rewrite_match_arms_for_param(
+    tokens: &[TokenTree],
+    enum_ty: Option<&TokenStream2>,
+    params: &[ParsedPropParam],
+) -> Vec<TokenTree> {
+    let mut out = Vec::new();
+    let mut idx = 0;
+    let mut at_arm_start = true;
+
+    while idx < tokens.len() {
+        if idx + 1 < tokens.len() {
+            if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) = (&tokens[idx], &tokens[idx + 1]) {
+                if p1.as_char() == '=' && p2.as_char() == '>' {
+                    out.push(tokens[idx].clone());
+                    out.push(tokens[idx + 1].clone());
+                    idx += 2;
+
+                    if idx < tokens.len() {
+                        if let TokenTree::Group(g) = &tokens[idx] {
+                            if g.delimiter() == Delimiter::Brace {
+                                let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                                let rewritten =
+                                    rewrite_match_dot_patterns_with_params(&inner, params);
+                                let mut ng =
+                                    Group::new(Delimiter::Brace, TokenStream2::from_iter(rewritten));
+                                ng.set_span(g.span());
+                                out.push(TokenTree::Group(ng));
+                                idx += 1;
+                                if idx < tokens.len() {
+                                    if let TokenTree::Punct(comma) = &tokens[idx] {
+                                        if comma.as_char() == ',' {
+                                            out.push(tokens[idx].clone());
+                                            idx += 1;
+                                        }
+                                    }
+                                }
+                                at_arm_start = true;
+                                continue;
+                            }
+                        }
+                    }
+
+                    while idx < tokens.len() {
+                        if let TokenTree::Punct(p) = &tokens[idx] {
+                            if p.as_char() == ',' {
+                                out.push(tokens[idx].clone());
+                                idx += 1;
+                                break;
+                            }
+                        }
+                        if let TokenTree::Group(g) = &tokens[idx] {
+                            let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                            let rewritten = rewrite_match_dot_patterns_with_params(&inner, params);
+                            let mut ng =
+                                Group::new(g.delimiter(), TokenStream2::from_iter(rewritten));
+                            ng.set_span(g.span());
+                            out.push(TokenTree::Group(ng));
+                        } else {
+                            out.push(tokens[idx].clone());
+                        }
+                        idx += 1;
+                    }
+                    at_arm_start = true;
+                    continue;
+                }
+            }
+        }
+
+        if at_arm_start {
+            if let TokenTree::Punct(p) = &tokens[idx] {
+                if p.as_char() == '.' {
+                    if let Some(TokenTree::Ident(var_id)) = tokens.get(idx + 1) {
+                        if let Some(ty_ts) = enum_ty {
+                            let var_span = var_id.span();
+                            let replacement = quote::quote_spanned! { var_span => #ty_ts::#var_id };
+                            out.extend(replacement);
+                            idx += 2;
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        out.push(tokens[idx].clone());
+        idx += 1;
+    }
+
+    out
+}
+
+fn expand_component_body(raw_body_tokens: &[TokenTree]) -> TokenStream2 {
+    if raw_body_tokens.is_empty() {
+        return quote! { ::native_kit::VStack::new() };
+    }
+    let has_return_macro = raw_body_tokens.windows(2).any(|w| {
+        if let (TokenTree::Ident(id), TokenTree::Punct(p)) = (&w[0], &w[1]) {
+            p.as_char() == '!'
+                && matches!(
+                    id.to_string().as_str(),
+                    "Return" | "View" | "view" | "render" | "ui"
+                )
+        } else {
+            false
+        }
+    });
+    if has_return_macro {
+        return TokenStream2::from_iter(raw_body_tokens.iter().cloned());
+    }
+    TokenStream2::from(expand_view_macro(TokenStream::from(
+        TokenStream2::from_iter(raw_body_tokens.iter().cloned()),
+    )))
 }
 
 fn camel_to_snake(s: &str) -> String {
@@ -61,147 +542,635 @@ fn extract_option_inner_type(ty: &Type) -> Option<&Type> {
     None
 }
 
+struct ParsedPropParam {
+    mutability: Option<TokenTree>,
+    ident: Ident,
+    ty: Option<Type>,
+    options: Vec<String>,
+    default_expr: Option<TokenStream2>,
+}
+
+fn strip_string_quotes(lit_str: &str) -> Option<String> {
+    if lit_str.starts_with('"') && lit_str.ends_with('"') && lit_str.len() >= 2 {
+        Some(lit_str[1..lit_str.len() - 1].to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_component_params(param_group: &Group) -> Vec<ParsedPropParam> {
+    let all_tokens: Vec<TokenTree> = param_group.stream().into_iter().collect();
+    let mut chunks = Vec::new();
+    let mut cur = Vec::new();
+    let mut angle_depth: usize = 0;
+    for tok in all_tokens {
+        match &tok {
+            TokenTree::Punct(p) if p.as_char() == '<' => {
+                angle_depth += 1;
+                cur.push(tok);
+            }
+            TokenTree::Punct(p) if p.as_char() == '>' && angle_depth > 0 => {
+                angle_depth -= 1;
+                cur.push(tok);
+            }
+            TokenTree::Punct(p) if p.as_char() == ',' && angle_depth == 0 => {
+                if !cur.is_empty() {
+                    chunks.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(tok),
+        }
+    }
+    if !cur.is_empty() {
+        chunks.push(cur);
+    }
+
+    let mut params = Vec::new();
+    for chunk in chunks {
+        let mut idx = 0;
+        let mut mutability = None;
+        if let Some(TokenTree::Ident(id)) = chunk.get(idx) {
+            if id == "mut" {
+                mutability = Some(chunk[idx].clone());
+                idx += 1;
+            }
+        }
+        let Some(TokenTree::Ident(param_ident)) = chunk.get(idx).cloned() else {
+            continue;
+        };
+        idx += 1;
+
+        // Find top-level `=` for default value
+        let mut eq_pos = None;
+        let mut ad = 0usize;
+        for (i, t) in chunk.iter().enumerate().skip(idx) {
+            match t {
+                TokenTree::Punct(p) if p.as_char() == '<' => ad += 1,
+                TokenTree::Punct(p) if p.as_char() == '>' && ad > 0 => ad -= 1,
+                TokenTree::Punct(p) if p.as_char() == '=' && ad == 0 => {
+                    eq_pos = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        let type_slice = match eq_pos {
+            Some(ep) => &chunk[idx..ep],
+            None => &chunk[idx..],
+        };
+        let default_slice = match eq_pos {
+            Some(ep) => &chunk[ep + 1..],
+            None => &[],
+        };
+
+        // Parse `: Type` or `: "opt1" | "opt2"` or `: .opt1 | .opt2`
+        let mut ty: Option<Type> = None;
+        let mut options: Vec<String> = Vec::new();
+        if let Some(TokenTree::Punct(colon)) = type_slice.first() {
+            if colon.as_char() == ':' {
+                let raw_ty = &type_slice[1..];
+                // Check if raw_ty is union options (`"option1" | "option2"` or `.option1 | .option2`)
+                let mut parsed_opts = Vec::new();
+                let mut is_union = !raw_ty.is_empty();
+                let mut ti = 0;
+                while ti < raw_ty.len() {
+                    if let TokenTree::Punct(p) = &raw_ty[ti] {
+                        if p.as_char() == '|' {
+                            ti += 1;
+                            continue;
+                        }
+                        if p.as_char() == '.' {
+                            if let Some(TokenTree::Ident(id)) = raw_ty.get(ti + 1) {
+                                parsed_opts.push(id.to_string());
+                                ti += 2;
+                                continue;
+                            }
+                        }
+                    } else if let TokenTree::Literal(lit) = &raw_ty[ti] {
+                        if let Some(s) = strip_string_quotes(&lit.to_string()) {
+                            parsed_opts.push(s);
+                            ti += 1;
+                            continue;
+                        }
+                    }
+                    is_union = false;
+                    break;
+                }
+
+                if is_union && !parsed_opts.is_empty() {
+                    options = parsed_opts;
+                    ty = syn::parse2::<Type>(quote! { String }).ok();
+                } else {
+                    let ts = TokenStream2::from_iter(raw_ty.iter().cloned());
+                    ty = syn::parse2::<Type>(ts).ok();
+                }
+            }
+        }
+
+        // Parse `= default` expression
+        let mut default_expr: Option<TokenStream2> = None;
+        if !default_slice.is_empty() {
+            if default_slice.len() == 2 {
+                if let (TokenTree::Punct(dot), TokenTree::Ident(opt_id)) =
+                    (&default_slice[0], &default_slice[1])
+                {
+                    if dot.as_char() == '.' {
+                        let s = opt_id.to_string();
+                        default_expr = Some(quote! { (#s).into() });
+                    }
+                }
+            }
+            if default_expr.is_none() {
+                if default_slice.len() == 1 {
+                    if let TokenTree::Ident(id) = &default_slice[0] {
+                        if id == "None" {
+                            default_expr = Some(quote! { ::std::option::Option::None });
+                        }
+                    }
+                }
+            }
+            if default_expr.is_none() {
+                let d_tokens = transform_rust_tokens(default_slice);
+                default_expr = Some(quote! { (#d_tokens).into() });
+            }
+
+            // Infer type from default value if `: Type` was omitted (e.g. `gradient = "option1"`)
+            if ty.is_none() {
+                if let Some(TokenTree::Literal(lit)) = default_slice.first() {
+                    let s = lit.to_string();
+                    if s.starts_with('"') {
+                        ty = syn::parse2::<Type>(quote! { String }).ok();
+                    } else if s.contains('.') {
+                        ty = syn::parse2::<Type>(quote! { f32 }).ok();
+                    } else if s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                        ty = syn::parse2::<Type>(quote! { i32 }).ok();
+                    }
+                } else if let Some(TokenTree::Ident(id)) = default_slice.first() {
+                    if id == "true" || id == "false" {
+                        ty = syn::parse2::<Type>(quote! { bool }).ok();
+                    } else if id == "None" {
+                        ty = syn::parse2::<Type>(quote! { Option<String> }).ok();
+                    }
+                } else if let Some(TokenTree::Punct(p)) = default_slice.first() {
+                    if p.as_char() == '.' {
+                        ty = syn::parse2::<Type>(quote! { String }).ok();
+                    }
+                }
+            }
+        }
+
+        params.push(ParsedPropParam {
+            mutability,
+            ident: param_ident,
+            ty,
+            options,
+            default_expr,
+        });
+    }
+    params
+}
+
+#[proc_macro]
+pub fn Component(input: TokenStream) -> TokenStream {
+    component(TokenStream::new(), input)
+}
+
 #[proc_macro_attribute]
-pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input_fn = parse_macro_input!(item as ItemFn);
-    let fn_name = &input_fn.sig.ident;
-    let fn_vis = &input_fn.vis;
-    let fn_block = &input_fn.block;
-    let fn_generics = &input_fn.sig.generics;
+pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let item2 = TokenStream2::from(item);
+    let tokens: Vec<TokenTree> = item2.into_iter().collect();
+    let attr_tokens: Vec<TokenTree> = TokenStream2::from(attr).into_iter().collect();
+
+    // Find the last Brace group `{ ... }` as the function body
+    let Some(last_idx) = tokens
+        .iter()
+        .rposition(|t| matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Brace))
+    else {
+        return TokenStream::from(quote! { compile_error!("Expected function body `{ ... }` in #[component]"); });
+    };
+
+    let body_group = match &tokens[last_idx] {
+        TokenTree::Group(g) => g.clone(),
+        _ => unreachable!(),
+    };
+
+    // Find the parameter Parenthesis group `( ... )` in the header before the body
+    let header_tokens = &tokens[..last_idx];
+    let Some(paren_idx) = header_tokens
+        .iter()
+        .position(|t| matches!(t, TokenTree::Group(g) if g.delimiter() == Delimiter::Parenthesis))
+    else {
+        return TokenStream::from(TokenStream2::from_iter(tokens));
+    };
+
+    let param_group = match &header_tokens[paren_idx] {
+        TokenTree::Group(g) => g.clone(),
+        _ => unreachable!(),
+    };
+
+    // Build a clean Rust signature without custom `= default` or `"a" | "b"` inside `(...)` so `syn` always parses it
+    let mut clean_sig_tokens = TokenStream2::new();
+    clean_sig_tokens.extend(header_tokens[..paren_idx].iter().cloned());
+    clean_sig_tokens.extend(quote! { () });
+    clean_sig_tokens.extend(header_tokens[paren_idx + 1..].iter().cloned());
+    clean_sig_tokens.extend(quote! { {} });
+
+    let Ok(sig_fn) = syn::parse2::<ItemFn>(clean_sig_tokens) else {
+        return TokenStream::from(TokenStream2::from_iter(tokens));
+    };
+
+    let fn_name = &sig_fn.sig.ident;
+    let fn_vis = &sig_fn.vis;
+    let fn_generics = &sig_fn.sig.generics;
+
+    let mut parsed_params = parse_component_params(&param_group);
+    if !attr_tokens.is_empty() {
+        let attr_group = Group::new(Delimiter::Parenthesis, TokenStream2::from_iter(attr_tokens));
+        for ap in parse_component_params(&attr_group) {
+            if let Some(existing) = parsed_params.iter_mut().find(|p| p.ident == ap.ident) {
+                if !ap.options.is_empty() {
+                    existing.options = ap.options;
+                }
+                if ap.default_expr.is_some() {
+                    existing.default_expr = ap.default_expr;
+                }
+                if existing.ty.is_none() && ap.ty.is_some() {
+                    existing.ty = ap.ty;
+                }
+            } else {
+                parsed_params.push(ap);
+            }
+        }
+    }
+
+    let raw_body_tokens: Vec<TokenTree> = body_group.stream().into_iter().collect();
+    if parsed_params.is_empty() {
+        let ret_ty = match &sig_fn.sig.output {
+            ReturnType::Default => quote! { impl ::native_kit::IntoNode },
+            ReturnType::Type(_, ty) => quote! { #ty },
+        };
+        let orig_body = body_group.stream();
+        return TokenStream::from(quote! {
+            #[allow(non_snake_case, dead_code)]
+            #fn_vis fn #fn_name #fn_generics () -> #ret_ty {
+                #[allow(unused_imports)]
+                use ::native_kit::*;
+                #[allow(unused_imports)]
+                use crate::__nk_auto::*;
+                #[allow(unused_imports)]
+                use crate::app::*;
+                #orig_body
+            }
+        });
+    }
+
+    let rewritten_body_tokens =
+        rewrite_match_dot_patterns_with_params(&raw_body_tokens, &parsed_params);
+    let transformed_body = expand_component_body(&rewritten_body_tokens);
 
     let mut field_defs = Vec::new();
     let mut default_inits = Vec::new();
     let mut builder_methods = Vec::new();
     let mut local_bindings = Vec::new();
+    let mut prop_option_helpers = Vec::new();
     let mut has_children_param = false;
 
-    for arg in &input_fn.sig.inputs {
-        if let FnArg::Typed(pat_type) = arg {
-            if let Pat::Ident(pat_ident) = &*pat_type.pat {
-                let param_ident = &pat_ident.ident;
-                let param_mut = &pat_ident.mutability;
-                let param_ty = &*pat_type.ty;
-                let param_name_str = param_ident.to_string();
+    for param in &parsed_params {
+        let param_ident = &param.ident;
+        let param_mut = &param.mutability;
+        let param_name_str = param_ident.to_string();
+        let fallback_ty: Type = syn::parse2(quote! { String }).unwrap();
+        let param_ty = param.ty.as_ref().unwrap_or(&fallback_ty);
 
-                let is_children = param_name_str == "children" || {
-                    if let Type::Path(tp) = param_ty {
+        let is_children = param_name_str == "children" || {
+            if let Type::Path(tp) = param_ty {
+                tp.path
+                    .segments
+                    .last()
+                    .map(|s| s.ident == "Children")
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        };
+
+        if is_children {
+            has_children_param = true;
+            field_defs.push(quote! {
+                #param_ident: ::std::vec::Vec<::native_kit::Node>
+            });
+            default_inits.push(quote! {
+                #param_ident: ::std::vec::Vec::new()
+            });
+            local_bindings.push(quote! {
+                let #param_mut #param_ident = self.#param_ident;
+            });
+        } else {
+            field_defs.push(quote! {
+                #param_ident: #param_ty
+            });
+            if let Some(ref def_expr) = param.default_expr {
+                default_inits.push(quote! {
+                    #param_ident: #def_expr
+                });
+            } else {
+                default_inits.push(quote! {
+                    #param_ident: ::std::default::Default::default()
+                });
+            }
+
+            let alt_name = if param_name_str.contains('_') {
+                snake_to_camel(&param_name_str)
+            } else {
+                camel_to_snake(&param_name_str)
+            };
+            let alt_ident = if alt_name != param_name_str && !alt_name.is_empty() {
+                Some(Ident::new(&alt_name, param_ident.span()))
+            } else {
+                None
+            };
+
+            let doc_comment = if !param.options.is_empty() {
+                format!("Valid options: {}", param.options.join(", "))
+            } else {
+                String::new()
+            };
+            let doc_attr = if !doc_comment.is_empty() {
+                quote! { #[doc = #doc_comment] }
+            } else {
+                TokenStream2::new()
+            };
+
+            if !param.options.is_empty() {
+                let opts_struct_ident = Ident::new(
+                    &format!("__NkPropOpts_{}_{}", fn_name, param_ident),
+                    param_ident.span(),
+                );
+                let opt_fields: Vec<TokenStream2> = param
+                    .options
+                    .iter()
+                    .filter_map(|o| {
+                        let clean: String = o
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                            .collect();
+                        if clean.is_empty() {
+                            return None;
+                        }
+                        let id = Ident::new(&clean, param_ident.span());
+                        Some(quote! { pub #id: &'static str })
+                    })
+                    .collect();
+                let opt_inits: Vec<TokenStream2> = param
+                    .options
+                    .iter()
+                    .filter_map(|o| {
+                        let clean: String = o
+                            .chars()
+                            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+                            .collect();
+                        if clean.is_empty() {
+                            return None;
+                        }
+                        let id = Ident::new(&clean, param_ident.span());
+                        Some(quote! { #id: #o })
+                    })
+                    .collect();
+                let helper_fn_ident = Ident::new(
+                    &format!("__nk_prop_opts_{}", param_ident),
+                    param_ident.span(),
+                );
+                prop_option_helpers.push(quote! {
+                    #[allow(non_camel_case_types, non_snake_case, dead_code)]
+                    pub struct #opts_struct_ident {
+                        #( #opt_fields ),*
+                    }
+                    impl ::std::convert::From<#opts_struct_ident> for String {
+                        fn from(_: #opts_struct_ident) -> String {
+                            String::new()
+                        }
+                    }
+                    impl #fn_generics #fn_name #fn_generics {
+                        #[doc(hidden)]
+                        #[allow(non_snake_case, dead_code)]
+                        pub const fn #helper_fn_ident() -> #opts_struct_ident {
+                            #opts_struct_ident {
+                                #( #opt_inits ),*
+                            }
+                        }
+                    }
+                });
+                if let Some(ref alt) = alt_ident {
+                    let alt_helper_ident = Ident::new(
+                        &format!("__nk_prop_opts_{}", alt),
+                        param_ident.span(),
+                    );
+                    prop_option_helpers.push(quote! {
+                        impl #fn_generics #fn_name #fn_generics {
+                            #[doc(hidden)]
+                            #[allow(non_snake_case, dead_code)]
+                            pub const fn #alt_helper_ident() -> #opts_struct_ident {
+                                Self::#helper_fn_ident()
+                            }
+                        }
+                    });
+                }
+            } else {
+                let helper_ty = extract_option_inner_type(param_ty).unwrap_or(param_ty);
+                let helper_fn_ident = Ident::new(
+                    &format!("__nk_prop_opts_{}", param_ident),
+                    param_ident.span(),
+                );
+                let is_builtin_scalar = if let Type::Path(tp) = helper_ty {
+                    tp.path
+                        .segments
+                        .last()
+                        .map(|s| {
+                            matches!(
+                                s.ident.to_string().as_str(),
+                                "String" | "bool" | "i32" | "u32" | "f32" | "f64" | "usize" | "Action" | "Children"
+                            )
+                        })
+                        .unwrap_or(false)
+                } else {
+                    true
+                };
+
+                if !is_builtin_scalar {
+                    let opts_ty_ident = if let Type::Path(tp) = helper_ty {
                         tp.path
                             .segments
                             .last()
-                            .map(|s| s.ident == "Children")
-                            .unwrap_or(false)
-                    } else {
-                        false
-                    }
-                };
-
-                if is_children {
-                    has_children_param = true;
-                    field_defs.push(quote! {
-                        pub #param_ident: ::std::vec::Vec<::native_kit::Node>
-                    });
-                    default_inits.push(quote! {
-                        #param_ident: ::std::vec::Vec::new()
-                    });
-                    local_bindings.push(quote! {
-                        let #param_mut #param_ident = self.#param_ident;
-                    });
-                } else {
-                    field_defs.push(quote! {
-                        pub #param_ident: #param_ty
-                    });
-                    default_inits.push(quote! {
-                        #param_ident: ::std::default::Default::default()
-                    });
-                    let alt_name = if param_name_str.contains('_') {
-                        snake_to_camel(&param_name_str)
-                    } else {
-                        camel_to_snake(&param_name_str)
-                    };
-                    let alt_ident = if alt_name != param_name_str && !alt_name.is_empty() {
-                        Some(Ident::new(&alt_name, param_ident.span()))
+                            .map(|s| Ident::new(&format!("__NkEnumOpts_{}", s.ident), s.ident.span()))
                     } else {
                         None
                     };
-
-                    if let Some(inner_ty) = extract_option_inner_type(param_ty) {
-                        if is_bool_type(inner_ty) {
-                            builder_methods.push(quote! {
-                                #[allow(non_snake_case)]
-                                pub fn #param_ident(mut self, val: impl ::native_kit::IntoBoolProp) -> Self {
-                                    self.#param_ident = ::std::option::Option::Some(val.into_bool_prop());
-                                    self
+                    if let Some(opts_ty) = opts_ty_ident {
+                        prop_option_helpers.push(quote! {
+                            impl #fn_generics #fn_name #fn_generics {
+                                #[doc(hidden)]
+                                #[allow(non_snake_case, dead_code)]
+                                pub const fn #helper_fn_ident() -> #opts_ty {
+                                    <#helper_ty>::__nk_enum_opts()
                                 }
-                            });
-                            if let Some(ref alt) = alt_ident {
-                                builder_methods.push(quote! {
-                                    #[allow(non_snake_case)]
-                                    pub fn #alt(self, val: impl ::native_kit::IntoBoolProp) -> Self {
-                                        self.#param_ident(val)
-                                    }
-                                });
-                            }
-                        } else {
-                            builder_methods.push(quote! {
-                                #[allow(non_snake_case)]
-                                pub fn #param_ident(mut self, val: impl ::native_kit::IntoOptionalProp<#inner_ty>) -> Self {
-                                    self.#param_ident = val.into_optional_prop();
-                                    self
-                                }
-                            });
-                            if let Some(ref alt) = alt_ident {
-                                builder_methods.push(quote! {
-                                    #[allow(non_snake_case)]
-                                    pub fn #alt(self, val: impl ::native_kit::IntoOptionalProp<#inner_ty>) -> Self {
-                                        self.#param_ident(val)
-                                    }
-                                });
-                            }
-                        }
-                    } else if is_bool_type(param_ty) {
-                        builder_methods.push(quote! {
-                            #[allow(non_snake_case)]
-                            pub fn #param_ident(mut self, val: impl ::native_kit::IntoBoolProp) -> Self {
-                                self.#param_ident = val.into_bool_prop();
-                                self
                             }
                         });
                         if let Some(ref alt) = alt_ident {
-                            builder_methods.push(quote! {
-                                #[allow(non_snake_case)]
-                                pub fn #alt(self, val: impl ::native_kit::IntoBoolProp) -> Self {
-                                    self.#param_ident(val)
-                                }
-                            });
-                        }
-                    } else {
-                        builder_methods.push(quote! {
-                            #[allow(non_snake_case)]
-                            pub fn #param_ident(mut self, val: impl ::std::convert::Into<#param_ty>) -> Self {
-                                self.#param_ident = val.into();
-                                self
-                            }
-                        });
-                        if let Some(ref alt) = alt_ident {
-                            builder_methods.push(quote! {
-                                #[allow(non_snake_case)]
-                                pub fn #alt(self, val: impl ::std::convert::Into<#param_ty>) -> Self {
-                                    self.#param_ident(val)
+                            let alt_helper_ident = Ident::new(
+                                &format!("__nk_prop_opts_{}", alt),
+                                param_ident.span(),
+                            );
+                            prop_option_helpers.push(quote! {
+                                impl #fn_generics #fn_name #fn_generics {
+                                    #[doc(hidden)]
+                                    #[allow(non_snake_case, dead_code)]
+                                    pub const fn #alt_helper_ident() -> #opts_ty {
+                                        <#helper_ty>::__nk_enum_opts()
+                                    }
                                 }
                             });
                         }
                     }
-                    local_bindings.push(quote! {
-                        let #param_mut #param_ident = self.#param_ident;
+                }
+            }
+
+            if let Some(inner_ty) = extract_option_inner_type(param_ty) {
+                if is_bool_type(inner_ty) {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #param_ident(mut self, val: impl ::native_kit::IntoBoolProp) -> Self {
+                            self.#param_ident = ::std::option::Option::Some(val.into_bool_prop());
+                            self
+                        }
+                    });
+                    if let Some(ref alt) = alt_ident {
+                        builder_methods.push(quote! {
+                            #doc_attr
+                            #[allow(non_snake_case)]
+                            pub fn #alt(self, val: impl ::native_kit::IntoBoolProp) -> Self {
+                                self.#param_ident(val)
+                            }
+                        });
+                    }
+                } else if is_action_type(inner_ty) {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #param_ident<__NkH, __NkArgs, __NkS>(mut self, handler: __NkH) -> Self
+                        where
+                            __NkH: ::native_kit::ActionHandler<__NkArgs, __NkS>,
+                            __NkS: 'static,
+                        {
+                            self.#param_ident = ::std::option::Option::Some(::native_kit::Action::new(handler));
+                            self
+                        }
+                    });
+                    if let Some(ref alt) = alt_ident {
+                        builder_methods.push(quote! {
+                            #doc_attr
+                            #[allow(non_snake_case)]
+                            pub fn #alt<__NkH, __NkArgs, __NkS>(self, handler: __NkH) -> Self
+                            where
+                                __NkH: ::native_kit::ActionHandler<__NkArgs, __NkS>,
+                                __NkS: 'static,
+                            {
+                                self.#param_ident(handler)
+                            }
+                        });
+                    }
+                } else {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #param_ident(mut self, val: impl ::native_kit::IntoOptionalProp<#inner_ty>) -> Self {
+                            self.#param_ident = val.into_optional_prop();
+                            self
+                        }
+                    });
+                    if let Some(ref alt) = alt_ident {
+                        builder_methods.push(quote! {
+                            #doc_attr
+                            #[allow(non_snake_case)]
+                            pub fn #alt(self, val: impl ::native_kit::IntoOptionalProp<#inner_ty>) -> Self {
+                                self.#param_ident(val)
+                            }
+                        });
+                    }
+                }
+            } else if is_bool_type(param_ty) {
+                builder_methods.push(quote! {
+                    #doc_attr
+                    #[allow(non_snake_case)]
+                    pub fn #param_ident(mut self, val: impl ::native_kit::IntoBoolProp) -> Self {
+                        self.#param_ident = val.into_bool_prop();
+                        self
+                    }
+                });
+                if let Some(ref alt) = alt_ident {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #alt(self, val: impl ::native_kit::IntoBoolProp) -> Self {
+                            self.#param_ident(val)
+                        }
+                    });
+                }
+            } else if is_action_type(param_ty) {
+                builder_methods.push(quote! {
+                    #doc_attr
+                    #[allow(non_snake_case)]
+                    pub fn #param_ident<__NkH, __NkArgs, __NkS>(mut self, handler: __NkH) -> Self
+                    where
+                        __NkH: ::native_kit::ActionHandler<__NkArgs, __NkS>,
+                        __NkS: 'static,
+                    {
+                        self.#param_ident = ::native_kit::Action::new(handler);
+                        self
+                    }
+                });
+                if let Some(ref alt) = alt_ident {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #alt<__NkH, __NkArgs, __NkS>(self, handler: __NkH) -> Self
+                        where
+                            __NkH: ::native_kit::ActionHandler<__NkArgs, __NkS>,
+                            __NkS: 'static,
+                        {
+                            self.#param_ident(handler)
+                        }
+                    });
+                }
+            } else {
+                builder_methods.push(quote! {
+                    #doc_attr
+                    #[allow(non_snake_case)]
+                    pub fn #param_ident(mut self, val: impl ::std::convert::Into<#param_ty>) -> Self {
+                        self.#param_ident = val.into();
+                        self
+                    }
+                });
+                if let Some(ref alt) = alt_ident {
+                    builder_methods.push(quote! {
+                        #doc_attr
+                        #[allow(non_snake_case)]
+                        pub fn #alt(self, val: impl ::std::convert::Into<#param_ty>) -> Self {
+                            self.#param_ident(val)
+                        }
                     });
                 }
             }
+            local_bindings.push(quote! {
+                let #param_mut #param_ident = self.#param_ident;
+            });
         }
     }
 
     if !has_children_param {
         field_defs.push(quote! {
-            pub __children: ::std::vec::Vec<::native_kit::Node>
+            __children: ::std::vec::Vec<::native_kit::Node>
         });
         default_inits.push(quote! {
             __children: ::std::vec::Vec::new()
@@ -214,12 +1183,13 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
         Ident::new("__children", Span::call_site())
     };
 
-    let ret_ty = match &input_fn.sig.output {
+    let ret_ty = match &sig_fn.sig.output {
         ReturnType::Default => quote! { impl ::native_kit::IntoNode },
         ReturnType::Type(_, ty) => quote! { #ty },
     };
 
     let render_fn_ident = Ident::new(&format!("__nk_render_{}", fn_name), fn_name.span());
+    let new_fn_ident = Ident::new("new", fn_name.span());
 
     let expanded = quote! {
         #[derive(Clone)]
@@ -229,17 +1199,17 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         impl #fn_generics ::std::default::Default for #fn_name #fn_generics {
             fn default() -> Self {
-                Self::new()
+                Self::#new_fn_ident()
             }
         }
 
         #[allow(non_snake_case, dead_code)]
         #fn_vis fn #fn_name #fn_generics () -> #fn_name #fn_generics {
-            #fn_name::new()
+            #fn_name::#new_fn_ident()
         }
 
         impl #fn_generics #fn_name #fn_generics {
-            pub fn new() -> Self {
+            pub fn #new_fn_ident() -> Self {
                 Self {
                     #( #default_inits ),*
                 }
@@ -259,9 +1229,13 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
             fn #render_fn_ident(self) -> #ret_ty {
                 #[allow(unused_imports)]
-                use crate::*;
+                use ::native_kit::*;
+                #[allow(unused_imports)]
+                use crate::__nk_auto::*;
+                #[allow(unused_imports)]
+                use crate::app::*;
                 #( #local_bindings )*
-                #fn_block
+                #transformed_body
             }
         }
 
@@ -270,175 +1244,11 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 ::native_kit::IntoNode::into_node(self.#render_fn_ident())
             }
         }
+
+        #( #prop_option_helpers )*
     };
 
     TokenStream::from(expanded)
-}
-
-fn collect_rs_files_recursive(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let mut paths: Vec<std::path::PathBuf> = entries.flatten().map(|e| e.path()).collect();
-    paths.sort();
-    for path in paths {
-        if path.is_dir() {
-            collect_rs_files_recursive(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-            let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if fname != "mod.rs" && fname != "lib.rs" && fname != "main.rs" {
-                out.push(path);
-            }
-        }
-    }
-}
-
-fn extract_pub_item_names(file_path: &Path) -> Vec<(String, String)> {
-    let Ok(content) = std::fs::read_to_string(file_path) else {
-        return Vec::new();
-    };
-    if let Ok(syntax) = syn::parse_file(&content) {
-        let mut items = Vec::new();
-        for item in syntax.items {
-            match item {
-                syn::Item::Fn(f) if matches!(f.vis, syn::Visibility::Public(_)) => {
-                    items.push((f.sig.ident.to_string(), "fn".to_string()));
-                }
-                syn::Item::Struct(s) if matches!(s.vis, syn::Visibility::Public(_)) => {
-                    items.push((s.ident.to_string(), "struct".to_string()));
-                }
-                syn::Item::Enum(e) if matches!(e.vis, syn::Visibility::Public(_)) => {
-                    items.push((e.ident.to_string(), "enum".to_string()));
-                }
-                syn::Item::Type(t) if matches!(t.vis, syn::Visibility::Public(_)) => {
-                    items.push((t.ident.to_string(), "type".to_string()));
-                }
-                syn::Item::Const(c) if matches!(c.vis, syn::Visibility::Public(_)) => {
-                    items.push((c.ident.to_string(), "const".to_string()));
-                }
-                _ => {}
-            }
-        }
-        return items;
-    }
-
-    // Fallback token scan for files containing `.option` shorthand syntax before macro expansion
-    let mut items = Vec::new();
-    if let Ok(ts) = content.parse::<TokenStream2>() {
-        let toks: Vec<TokenTree> = ts.into_iter().collect();
-        let mut i = 0;
-        while i + 2 < toks.len() {
-            if let (TokenTree::Ident(v), TokenTree::Ident(kw), TokenTree::Ident(name)) =
-                (&toks[i], &toks[i + 1], &toks[i + 2])
-            {
-                if v == "pub" {
-                    let kw_s = kw.to_string();
-                    if matches!(kw_s.as_str(), "fn" | "struct" | "enum" | "type" | "const") {
-                        items.push((name.to_string(), kw_s));
-                        i += 3;
-                        continue;
-                    }
-                }
-            }
-            i += 1;
-        }
-    }
-    items
-}
-
-#[proc_macro]
-pub fn auto_import(_input: TokenStream) -> TokenStream {
-    let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") else {
-        return TokenStream::new();
-    };
-    let src_dir = Path::new(&manifest_dir).join("src");
-    let mut files = Vec::new();
-    for folder in ["components", "pages", "views"] {
-        let dir = src_dir.join(folder);
-        if dir.exists() && dir.is_dir() {
-            collect_rs_files_recursive(&dir, &mut files);
-        }
-    }
-
-    // Detect clashing public component / item names across files
-    let mut seen_symbols: HashMap<(String, String), String> = HashMap::new();
-    let mut clash_errors = TokenStream2::new();
-    for file in &files {
-        let rel_display = file
-            .strip_prefix(&manifest_dir)
-            .unwrap_or(file)
-            .to_string_lossy()
-            .replace('\\', "/");
-        for (sym_name, sym_kind) in extract_pub_item_names(file) {
-            let ns = if sym_kind == "fn" || sym_kind == "const" {
-                "value".to_string()
-            } else {
-                "type".to_string()
-            };
-            if let Some(prev_file) = seen_symbols.insert((sym_name.clone(), ns), rel_display.clone()) {
-                if prev_file != rel_display {
-                    let msg = format!(
-                        "Duplicate public `{}` found in both `{}` and `{}`. Please give each component/page a unique name.",
-                        sym_name, prev_file, rel_display
-                    );
-                    clash_errors.extend(quote! {
-                        compile_error!(#msg);
-                    });
-                }
-            }
-        }
-    }
-
-    if !clash_errors.is_empty() {
-        let mut out = clash_errors;
-        for (idx, file) in files.iter().enumerate() {
-            let rel_from_src = file
-                .strip_prefix(&src_dir)
-                .unwrap_or(file)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let stem = file
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("item")
-                .chars()
-                .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-                .collect::<String>();
-            let mod_ident = Ident::new(&format!("__nk_auto_{}_{}", idx, stem), Span::call_site());
-            out.extend(quote! {
-                #[path = #rel_from_src]
-                #[allow(non_snake_case, dead_code, unused_imports)]
-                pub mod #mod_ident;
-            });
-        }
-        return TokenStream::from(out);
-    }
-
-    let mut mod_tokens = TokenStream2::new();
-    for (idx, file) in files.iter().enumerate() {
-        let rel_from_src = file
-            .strip_prefix(&src_dir)
-            .unwrap_or(file)
-            .to_string_lossy()
-            .replace('\\', "/");
-        let stem = file
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("item")
-            .chars()
-            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
-            .collect::<String>();
-        let mod_ident = Ident::new(&format!("__nk_auto_{}_{}", idx, stem), Span::call_site());
-        mod_tokens.extend(quote! {
-            #[path = #rel_from_src]
-            #[allow(non_snake_case, dead_code, unused_imports)]
-            pub mod #mod_ident;
-            #[allow(unused_imports)]
-            pub use #mod_ident::*;
-        });
-    }
-
-    TokenStream::from(mod_tokens)
 }
 
 #[proc_macro_attribute]
@@ -573,7 +1383,7 @@ fn expand_view_macro(input: TokenStream) -> TokenStream {
         return TokenStream::from(quote! {
             {
                 #[allow(unused_imports)]
-                use crate::*;
+                use crate::__nk_auto::*;
                 #prefix_stmts
                 #single
             }
@@ -586,7 +1396,7 @@ fn expand_view_macro(input: TokenStream) -> TokenStream {
     TokenStream::from(quote! {
         {
             #[allow(unused_imports)]
-            use crate::*;
+            use crate::__nk_auto::*;
             #prefix_stmts
             #out
         }
@@ -749,9 +1559,11 @@ fn is_string_literal(lit: &proc_macro2::Literal) -> bool {
 fn rewrite_leading_dot_tokens(prop_table: &str, prop_span: Span, arg_tokens: &[TokenTree]) -> TokenStream2 {
     if let Some(TokenTree::Punct(first_dot)) = arg_tokens.first() {
         if first_dot.as_char() == '.' {
+            let dot_span = first_dot.span();
             let table_ident = Ident::new(prop_table, prop_span);
             let rest_transformed = transform_rust_tokens(&arg_tokens[1..]);
-            return quote! { ::native_kit::__props::#table_ident #first_dot #rest_transformed };
+            let prefix = quote::quote_spanned! { dot_span => ::native_kit::__props::#table_ident };
+            return quote! { #prefix #first_dot #rest_transformed };
         }
     }
     transform_rust_tokens(arg_tokens)
@@ -773,20 +1585,29 @@ fn transform_method_args(
         method_name.as_str()
     };
 
-    if table_name == "icon_variant" || is_known_dot_prop(table_name) {
+    let is_custom = comp_name.map(|c| is_custom_component_ident(c)).unwrap_or(false);
+    if !is_custom && (table_name == "icon_variant" || is_known_dot_prop(table_name)) {
         return rewrite_leading_dot_tokens(table_name, method_ident.span(), &arg_tokens);
     }
 
-    // For custom component props (e.g. `.gradient(.option1)`), convert leading `.ident` into `"ident"`
-    if arg_tokens.len() == 2 {
-        if let (TokenTree::Punct(first_dot), TokenTree::Ident(opt_ident)) =
-            (&arg_tokens[0], &arg_tokens[1])
-        {
+    // For custom component props (e.g. `Card.gradient(.option1)`), rewrite `.option1` into `Card::__nk_prop_opts_gradient().option1`
+    // so rust-analyzer provides real IDE autocomplete for options declared on the component!
+    if is_custom {
+        if let Some(TokenTree::Punct(first_dot)) = arg_tokens.first() {
             if first_dot.as_char() == '.' {
-                let opt_str = opt_ident.to_string();
-                return quote! { #opt_str };
+                let c_name = comp_name.unwrap();
+                let dot_span = first_dot.span();
+                let comp_ident = Ident::new(c_name, dot_span);
+                let helper_ident = Ident::new(&format!("__nk_prop_opts_{}", method_name), method_ident.span());
+                let rest_transformed = transform_rust_tokens(&arg_tokens[1..]);
+                let prefix = quote::quote_spanned! { dot_span => #comp_ident::#helper_ident() };
+                return quote! { #prefix #first_dot #rest_transformed };
             }
         }
+    }
+
+    if table_name == "icon_variant" || is_known_dot_prop(table_name) {
+        return rewrite_leading_dot_tokens(table_name, method_ident.span(), &arg_tokens);
     }
 
     transform_rust_tokens(&arg_tokens)
@@ -830,6 +1651,28 @@ fn consume_modifier_chain(
 
         if *idx + 1 < tokens.len() {
             if let TokenTree::Ident(method_ident) = &tokens[*idx + 1] {
+                // If `method_ident` is actually the next sibling component (e.g. user typed `.` at the end of a line before `Button(...)` or `Text(...)`)
+                if is_component_start_ignoring_prev(tokens, *idx + 1) {
+                    incomplete_mods.extend(std::iter::once(TokenTree::Punct(dot.clone())));
+                    *idx += 1;
+                    break;
+                }
+
+                // If `method_ident` is followed by `{ ... }` (e.g. user typed `.` or `.foo` right before `{ HStack ... }`),
+                // do NOT consume the following `{ ... }` children block as part of the incomplete method!
+                if *idx + 2 < tokens.len() {
+                    if let TokenTree::Group(next_group) = &tokens[*idx + 2] {
+                        if next_group.delimiter() == Delimiter::Brace {
+                            incomplete_mods.extend([
+                                TokenTree::Punct(dot.clone()),
+                                TokenTree::Ident(method_ident.clone()),
+                            ]);
+                            *idx += 2;
+                            break;
+                        }
+                    }
+                }
+
                 if *idx + 2 < tokens.len() {
                     if let TokenTree::Group(arg_group) = &tokens[*idx + 2] {
                         if arg_group.delimiter() == Delimiter::Parenthesis {
@@ -881,13 +1724,6 @@ fn consume_modifier_chain(
                     }
                 }
 
-                // If `method_ident` is actually the next sibling component (e.g. user typed `.` at the end of a line before `Button(...)`)
-                if is_component_start_ignoring_prev(tokens, *idx + 1) {
-                    incomplete_mods.extend(std::iter::once(TokenTree::Punct(dot.clone())));
-                    *idx += 1;
-                    break;
-                }
-
                 // Incomplete method call (or rust-analyzer's completion marker `intellijRulezz`)
                 incomplete_mods.extend([
                     TokenTree::Punct(dot.clone()),
@@ -933,19 +1769,18 @@ fn parse_component_invocation(tokens: &[TokenTree], idx: &mut usize) -> TokenStr
         }
     }
 
-    // Build base component expression
-    let type_ident = Ident::new(&comp_name, comp_span);
+    // Build base component expression (preserve `comp_ident` directly so Go-to-Definition on `Card` or `Button` works in rust-analyzer)
     let mut base_expr = match comp_name.as_str() {
         "Text" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if inner.is_empty() {
-                    quote! { ::native_kit::#type_ident::new() }
+                    quote! { ::native_kit::#comp_ident::new() }
                 } else if let Some(TokenTree::Literal(lit)) = inner.first() {
                     if is_string_literal(lit) {
                         let transformed = transform_rust_tokens(&inner);
                         quote! {
-                            ::native_kit::#type_ident {
+                            ::native_kit::#comp_ident {
                                 props: vec![("label".to_string(), ::native_kit::PropValue::String(format!(#transformed)))],
                                 children: vec![],
                             }
@@ -953,7 +1788,7 @@ fn parse_component_invocation(tokens: &[TokenTree], idx: &mut usize) -> TokenStr
                     } else {
                         let transformed = transform_rust_tokens(&inner);
                         quote! {
-                            ::native_kit::#type_ident {
+                            ::native_kit::#comp_ident {
                                 props: vec![("label".to_string(), ::native_kit::PropValue::String((#transformed).into()))],
                                 children: vec![],
                             }
@@ -962,84 +1797,84 @@ fn parse_component_invocation(tokens: &[TokenTree], idx: &mut usize) -> TokenStr
                 } else {
                     let transformed = transform_rust_tokens(&inner);
                     quote! {
-                        ::native_kit::#type_ident {
+                        ::native_kit::#comp_ident {
                             props: vec![("label".to_string(), ::native_kit::PropValue::String((#transformed).into()))],
                             children: vec![],
                         }
                     }
                 }
             } else {
-                quote! { ::native_kit::#type_ident::new() }
+                quote! { ::native_kit::#comp_ident::new() }
             }
         }
         "Icon" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if inner.is_empty() {
-                    quote! { ::native_kit::#type_ident::new("") }
+                    quote! { ::native_kit::#comp_ident::new("") }
                 } else {
                     let transformed = rewrite_leading_dot_tokens("icon", comp_span, &inner);
-                    quote! { ::native_kit::#type_ident::new(#transformed) }
+                    quote! { ::native_kit::#comp_ident::new(#transformed) }
                 }
             } else {
-                quote! { ::native_kit::#type_ident::new("") }
+                quote! { ::native_kit::#comp_ident::new("") }
             }
         }
         "Image" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if inner.is_empty() {
-                    quote! { ::native_kit::#type_ident::new() }
+                    quote! { ::native_kit::#comp_ident::new() }
                 } else {
                     let transformed = transform_rust_tokens(&inner);
                     quote! {
-                        ::native_kit::#type_ident {
+                        ::native_kit::#comp_ident {
                             props: vec![("src".to_string(), ::native_kit::PropValue::String((#transformed).into()))],
                             children: vec![],
                         }
                     }
                 }
             } else {
-                quote! { ::native_kit::#type_ident::new() }
+                quote! { ::native_kit::#comp_ident::new() }
             }
         }
         "TextInput" | "Switch" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if inner.is_empty() {
-                    quote! { ::native_kit::#type_ident::new() }
+                    quote! { ::native_kit::#comp_ident::new() }
                 } else {
                     let transformed = transform_rust_tokens(&inner);
-                    quote! { ::native_kit::#type_ident::new().value(#transformed) }
+                    quote! { ::native_kit::#comp_ident::new().value(#transformed) }
                 }
             } else {
-                quote! { ::native_kit::#type_ident::new() }
+                quote! { ::native_kit::#comp_ident::new() }
             }
         }
         "Picker" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 let transformed = transform_rust_tokens(&inner);
-                quote! { ::native_kit::#type_ident::new(#transformed) }
+                quote! { ::native_kit::#comp_ident::new(#transformed) }
             } else {
-                quote! { ::native_kit::#type_ident::new(Vec::<String>::new()) }
+                quote! { ::native_kit::#comp_ident::new(Vec::<String>::new()) }
             }
         }
         "Spacer" => {
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if inner.is_empty() {
-                    quote! { ::native_kit::#type_ident::new() }
+                    quote! { ::native_kit::#comp_ident::new() }
                 } else {
                     let transformed = transform_rust_tokens(&inner);
-                    quote! { ::native_kit::#type_ident::new().size(#transformed) }
+                    quote! { ::native_kit::#comp_ident::new().size(#transformed) }
                 }
             } else {
-                quote! { ::native_kit::#type_ident::new() }
+                quote! { ::native_kit::#comp_ident::new() }
             }
         }
         "Button" => {
-            let mut expr = quote! { ::native_kit::#type_ident::new() };
+            let mut expr = quote! { ::native_kit::#comp_ident::new() };
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
                 if !inner.is_empty() {
@@ -1063,9 +1898,9 @@ fn parse_component_invocation(tokens: &[TokenTree], idx: &mut usize) -> TokenStr
         }
         _ => {
             let mut expr = if is_component(&comp_name) {
-                quote! { ::native_kit::#type_ident::new() }
+                quote! { ::native_kit::#comp_ident::new() }
             } else {
-                quote! { #type_ident::new() }
+                quote! { #comp_ident::new() }
             };
             if let Some(g) = &ctor_group {
                 let inner: Vec<TokenTree> = g.stream().into_iter().collect();
@@ -1126,7 +1961,27 @@ fn parse_component_invocation(tokens: &[TokenTree], idx: &mut usize) -> TokenStr
     base_expr.extend(pre_mods);
     base_expr.extend(children_calls);
     base_expr.extend(post_mods);
-    base_expr.extend(incomplete_mods);
+    if !incomplete_mods.is_empty() {
+        let mut fallback = if is_component(&comp_name) {
+            quote! { ::native_kit::#comp_ident::new() }
+        } else {
+            quote! { #comp_ident::new() }
+        };
+        if let Some(g) = &ctor_group {
+            if matches!(comp_name.as_str(), "Icon") {
+                fallback = quote! { ::native_kit::#comp_ident::new("") };
+            } else if matches!(comp_name.as_str(), "Picker") {
+                fallback = quote! { ::native_kit::#comp_ident::new(Vec::<String>::new()) };
+            }
+            let _ = g;
+        }
+        return quote! {
+            {
+                let _ = #base_expr #incomplete_mods;
+                #fallback
+            }
+        };
+    }
     base_expr
 }
 
@@ -1440,7 +2295,31 @@ fn transform_rust_tokens(tokens: &[TokenTree]) -> TokenStream2 {
             }
         }
 
-        // 3. Recursively transform inside Groups `( ... )`, `{ ... }`, `[ ... ]`
+        // 3. Transform `match expr { .variant => ... }` leading-dot patterns in match arms
+        if let TokenTree::Ident(kw) = &tokens[idx] {
+            if kw == "match" {
+                out.extend(std::iter::once(tokens[idx].clone()));
+                idx += 1;
+                while idx < tokens.len() {
+                    if let TokenTree::Group(g) = &tokens[idx] {
+                        if g.delimiter() == Delimiter::Brace {
+                            let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                            let transformed_inner = transform_match_arms(&inner);
+                            let mut new_group = Group::new(Delimiter::Brace, transformed_inner);
+                            new_group.set_span(g.span());
+                            out.extend(std::iter::once(TokenTree::Group(new_group)));
+                            idx += 1;
+                            break;
+                        }
+                    }
+                    out.extend(std::iter::once(tokens[idx].clone()));
+                    idx += 1;
+                }
+                continue;
+            }
+        }
+
+        // 4. Recursively transform inside Groups `( ... )`, `{ ... }`, `[ ... ]`
         if let TokenTree::Group(g) = &tokens[idx] {
             let inner: Vec<TokenTree> = g.stream().into_iter().collect();
             let transformed_inner = transform_rust_tokens(&inner);

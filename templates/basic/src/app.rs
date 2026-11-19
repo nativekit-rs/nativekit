@@ -15,7 +15,8 @@ pub fn App() -> impl IntoNode {
     })
 }
 
-pub fn HomeScreen() -> impl IntoNode {
+#[component]
+pub fn HomeScreen() {
     let state = use_state::<Store>();
     let count = state.count;
 

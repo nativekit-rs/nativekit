@@ -12,7 +12,7 @@ pub use engine::ast::*;
 pub use engine::router::*;
 pub use engine::props::*;
 pub use native_kit_macros::{
-    auto_import, component, render, server, ui, view, Button, Grid, HStack, NavigationStack, Page,
-    Return, Section, ToolbarTop, VStack, View,
+    component, prop, prop_enum, render, server, ui, view, Button, Component, Grid, HStack,
+    NavigationStack, Page, PropEnum, Return, Section, ToolbarTop, VStack, View,
 };
 

@@ -5,6 +5,41 @@ use serde_json::Value;
 
 pub type ActionFn = Arc<dyn Fn(&mut dyn std::any::Any, Option<Value>) + Send + Sync>;
 
+#[derive(Clone, Default)]
+pub struct Action(Option<ActionFn>);
+
+impl Action {
+    pub fn new<H, Args, S>(handler: H) -> Self
+    where
+        H: ActionHandler<Args, S>,
+        S: 'static,
+    {
+        Self(Some(Arc::new(move |any_state, payload| {
+            handler.invoke(any_state, payload);
+        })))
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+impl ActionHandler<(), ()> for Action {
+    fn invoke(&self, state: &mut dyn std::any::Any, payload: Option<Value>) {
+        if let Some(ref f) = self.0 {
+            f(state, payload);
+        }
+    }
+}
+
+impl ActionHandler<(), ()> for Option<Action> {
+    fn invoke(&self, state: &mut dyn std::any::Any, payload: Option<Value>) {
+        if let Some(ref act) = self {
+            act.invoke(state, payload);
+        }
+    }
+}
+
 pub fn action_registry() -> &'static Mutex<HashMap<String, ActionFn>> {
     static REGISTRY: OnceLock<Mutex<HashMap<String, ActionFn>>> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))

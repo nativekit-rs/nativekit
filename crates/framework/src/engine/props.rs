@@ -383,4 +383,39 @@ pub mod __props {
         user: "user",
         warning: "warning",
     };
+
+    macro_rules! impl_props_into_string {
+        ($($t:ty),* $(,)?) => {
+            $(
+                impl From<$t> for String {
+                    fn from(_: $t) -> String {
+                        String::new()
+                    }
+                }
+                impl crate::engine::primitives::color::IntoBackground for $t {
+                    fn into_background(self) -> crate::engine::primitives::color::BackgroundValue {
+                        crate::engine::primitives::color::BackgroundValue::Solid(String::new())
+                    }
+                }
+            )*
+        };
+    }
+
+    impl_props_into_string!(
+        FontProps,
+        ColorProps,
+        ButtonVariantProps,
+        IconVariantProps,
+        RenderingProps,
+        PlacementProps,
+        WidthProps,
+        AlignProps,
+        TopStyleProps,
+        PresentationProps,
+        ContentModeProps,
+        PickerStyleProps,
+        DirectionProps,
+        GradientKindProps,
+        IconNameProps,
+    );
 }
