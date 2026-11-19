@@ -2009,6 +2009,26 @@ fn consume_modifier_chain(
                             }
                             let transformed_args = if m_name == "wrap" && arg_group.stream().is_empty() {
                                 quote! { true }
+                            } else if m_name == "padding" {
+                                if arg_group.stream().is_empty() {
+                                    quote! { () }
+                                } else {
+                                    let parts = split_comma_args(arg_group.stream());
+                                    if parts.len() > 1 {
+                                        let mut tuple_elems = Vec::new();
+                                        for part in parts {
+                                            let pt: Vec<TokenTree> = part.into_iter().collect();
+                                            tuple_elems.push(transform_rust_tokens(&pt));
+                                        }
+                                        quote! { ( #( #tuple_elems ),* ) }
+                                    } else {
+                                        transform_method_args(
+                                            method_ident,
+                                            arg_group.stream(),
+                                            comp_name,
+                                        )
+                                    }
+                                }
                             } else if arg_group.stream().is_empty()
                                 && comp_name.map(|c| is_custom_component_ident(c)).unwrap_or(false)
                             {

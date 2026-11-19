@@ -112,9 +112,24 @@ impl HStack {
         self
     }
 
-    pub fn padding(mut self, padding: u32) -> Self {
-        self.props.retain(|(k, _)| k != "padding");
-        self.props.push(("padding".to_string(), PropValue::Int(padding)));
+    pub fn padding(mut self, padding: impl crate::engine::builder::IntoPaddingProp) -> Self {
+        self.props.retain(|(k, _)| !matches!(k.as_str(), "padding" | "padding_system" | "padding_top" | "padding_right" | "padding_bottom" | "padding_left"));
+        match padding.into_padding_prop() {
+            crate::engine::builder::PaddingSpec::System => {
+                self.props.push(("padding_system".to_string(), PropValue::Bool(true)));
+                self.props.push(("padding".to_string(), PropValue::Int(16)));
+            }
+            crate::engine::builder::PaddingSpec::Sides(t, r, b, l) => {
+                if t == r && r == b && b == l {
+                    self.props.push(("padding".to_string(), PropValue::Int(t)));
+                } else {
+                    self.props.push(("padding_top".to_string(), PropValue::Int(t)));
+                    self.props.push(("padding_right".to_string(), PropValue::Int(r)));
+                    self.props.push(("padding_bottom".to_string(), PropValue::Int(b)));
+                    self.props.push(("padding_left".to_string(), PropValue::Int(l)));
+                }
+            }
+        }
         self
     }
 

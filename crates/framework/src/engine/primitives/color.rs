@@ -423,15 +423,26 @@ extension View {
 
     @ViewBuilder
     func applyContainerStyle(node: DynamicUINode) -> some View {
+        let sysPad = node.props["padding_system"] as? Bool ?? false
         let pad = CGFloat(node.props["padding"] as? Int ?? 0)
+        let padTop = CGFloat(node.props["padding_top"] as? Int ?? Int(pad))
+        let padRight = CGFloat(node.props["padding_right"] as? Int ?? Int(pad))
+        let padBottom = CGFloat(node.props["padding_bottom"] as? Int ?? Int(pad))
+        let padLeft = CGFloat(node.props["padding_left"] as? Int ?? Int(pad))
         let radius = CGFloat(node.props["corner_radius"] as? Int ?? 0)
         let opacity = Double(node.props["opacity"] as? Int ?? 100) / 100.0
         let bgName = node.props["background"] as? String ?? ""
         let bgImg = node.props["background_image"] as? String ?? ""
         let bgGrad = node.props["background_gradient"] as? [String: Any]
 
-        let styled = self
-            .padding(pad)
+        let padded = Group {
+            if sysPad {
+                self.padding()
+            } else {
+                self.padding(EdgeInsets(top: padTop, leading: padLeft, bottom: padBottom, trailing: padRight))
+            }
+        }
+        let styled = padded
             .background {
                 if !bgImg.isEmpty {
                     if (bgImg.hasPrefix("http://") || bgImg.hasPrefix("https://")), let url = URL(string: bgImg) {
@@ -558,6 +569,10 @@ fun Modifier.applyContainerStyle(node: DynamicUINode): Modifier {
     var m = this
     val radius = node.getInt("corner_radius", 0)
     val pad = node.getInt("padding", 0)
+    val padTop = node.getInt("padding_top", pad)
+    val padRight = node.getInt("padding_right", pad)
+    val padBottom = node.getInt("padding_bottom", pad)
+    val padLeft = node.getInt("padding_left", pad)
     val opacity = node.getInt("opacity", 100)
     val bgName = node.getString("background", "")
     val bgGrad = node.props["background_gradient"] as? org.json.JSONObject
@@ -576,8 +591,8 @@ fun Modifier.applyContainerStyle(node: DynamicUINode): Modifier {
             m = m.background(color = col)
         }
     }
-    if (pad > 0) {
-        m = m.padding(pad.dp)
+    if (padTop > 0 || padRight > 0 || padBottom > 0 || padLeft > 0) {
+        m = m.padding(start = padLeft.dp, top = padTop.dp, end = padRight.dp, bottom = padBottom.dp)
     }
     if (opacity < 100) {
         m = m.graphicsLayer(alpha = opacity.toFloat() / 100f)
@@ -644,6 +659,10 @@ pub fn apply_gtk_fg_color(widget: &impl gtk4::prelude::IsA<gtk4::Widget>, color:
 
 pub fn apply_gtk_container_style(bx: &impl gtk4::prelude::IsA<gtk4::Widget>, node: &DynamicUINode) {
     let pad = node.get_int("padding", 0);
+    let pad_t = node.get_int("padding_top", pad);
+    let pad_r = node.get_int("padding_right", pad);
+    let pad_b = node.get_int("padding_bottom", pad);
+    let pad_l = node.get_int("padding_left", pad);
     let radius = node.get_int("corner_radius", 0);
     let opacity = node.get_int("opacity", 100);
     let bg = node.get_string("background", "");
@@ -661,8 +680,8 @@ pub fn apply_gtk_container_style(bx: &impl gtk4::prelude::IsA<gtk4::Widget>, nod
             bx.add_css_class(&format!("nk-bg-{}", bg));
         }
     }
-    if pad > 0 {
-        rules.push_str(&format!("padding: {}px; ", pad));
+    if pad_t > 0 || pad_r > 0 || pad_b > 0 || pad_l > 0 {
+        rules.push_str(&format!("padding: {}px {}px {}px {}px; ", pad_t, pad_r, pad_b, pad_l));
     }
     if radius > 0 {
         rules.push_str(&format!("border-radius: {}px; ", radius));
@@ -739,7 +758,16 @@ function applyWebBgColor(el, color) {
 function applyWebContainerStyle(el, node) {
     if (!node || !node.props) return;
     if (node.props.spacing !== undefined) el.style.gap = node.props.spacing + "px";
-    if (node.props.padding !== undefined) el.style.padding = node.props.padding + "px";
+    if (node.props.padding_top !== undefined || node.props.padding_right !== undefined || node.props.padding_bottom !== undefined || node.props.padding_left !== undefined) {
+        const pDef = node.props.padding || 0;
+        const pt = (node.props.padding_top !== undefined) ? node.props.padding_top : pDef;
+        const pr = (node.props.padding_right !== undefined) ? node.props.padding_right : pDef;
+        const pb = (node.props.padding_bottom !== undefined) ? node.props.padding_bottom : pDef;
+        const pl = (node.props.padding_left !== undefined) ? node.props.padding_left : pDef;
+        el.style.padding = `${pt}px ${pr}px ${pb}px ${pl}px`;
+    } else if (node.props.padding !== undefined) {
+        el.style.padding = node.props.padding + "px";
+    }
     if (node.props.corner_radius !== undefined) el.style.borderRadius = node.props.corner_radius + "px";
     if (node.props.opacity !== undefined) el.style.opacity = (node.props.opacity / 100.0).toString();
     if (node.props.background_image) {
@@ -853,8 +881,13 @@ pub const COLOR_WINDOWS_HELPERS: &str = r##"
 
         private void ApplyWindowsContainerStyle(StackPanel sp, DynamicUINode node) {
             if (node.Props == null) return;
-            if (node.Props.ContainsKey("padding") && double.TryParse(node.Props["padding"].ToString(), out double pad)) {
-                sp.Padding = new Thickness(pad);
+            double padDef = (node.Props.ContainsKey("padding") && double.TryParse(node.Props["padding"].ToString(), out double p0)) ? p0 : 0.0;
+            double padT = (node.Props.ContainsKey("padding_top") && double.TryParse(node.Props["padding_top"].ToString(), out double pt)) ? pt : padDef;
+            double padR = (node.Props.ContainsKey("padding_right") && double.TryParse(node.Props["padding_right"].ToString(), out double pr)) ? pr : padDef;
+            double padB = (node.Props.ContainsKey("padding_bottom") && double.TryParse(node.Props["padding_bottom"].ToString(), out double pb)) ? pb : padDef;
+            double padL = (node.Props.ContainsKey("padding_left") && double.TryParse(node.Props["padding_left"].ToString(), out double pl)) ? pl : padDef;
+            if (padT > 0 || padR > 0 || padB > 0 || padL > 0) {
+                sp.Padding = new Thickness(padL, padT, padR, padB);
             }
             if (node.Props.ContainsKey("corner_radius") && double.TryParse(node.Props["corner_radius"].ToString(), out double rad)) {
                 sp.CornerRadius = new CornerRadius(rad);

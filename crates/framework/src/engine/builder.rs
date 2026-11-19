@@ -72,6 +72,65 @@ impl<T, U: Into<T>> IntoOptionalProp<T> for U {
     }
 }
 
+pub enum PaddingSpec {
+    System,
+    Sides(u32, u32, u32, u32),
+}
+
+pub trait IntoPaddingProp {
+    fn into_padding_prop(self) -> PaddingSpec;
+}
+
+impl IntoPaddingProp for () {
+    fn into_padding_prop(self) -> PaddingSpec {
+        PaddingSpec::System
+    }
+}
+
+impl IntoPaddingProp for u32 {
+    fn into_padding_prop(self) -> PaddingSpec {
+        PaddingSpec::Sides(self, self, self, self)
+    }
+}
+
+impl IntoPaddingProp for i32 {
+    fn into_padding_prop(self) -> PaddingSpec {
+        let v = self.max(0) as u32;
+        PaddingSpec::Sides(v, v, v, v)
+    }
+}
+
+impl IntoPaddingProp for (u32, u32) {
+    fn into_padding_prop(self) -> PaddingSpec {
+        PaddingSpec::Sides(self.0, self.1, self.0, self.1)
+    }
+}
+
+impl IntoPaddingProp for (i32, i32) {
+    fn into_padding_prop(self) -> PaddingSpec {
+        let v = self.0.max(0) as u32;
+        let h = self.1.max(0) as u32;
+        PaddingSpec::Sides(v, h, v, h)
+    }
+}
+
+impl IntoPaddingProp for (u32, u32, u32, u32) {
+    fn into_padding_prop(self) -> PaddingSpec {
+        PaddingSpec::Sides(self.0, self.1, self.2, self.3)
+    }
+}
+
+impl IntoPaddingProp for (i32, i32, i32, i32) {
+    fn into_padding_prop(self) -> PaddingSpec {
+        PaddingSpec::Sides(
+            self.0.max(0) as u32,
+            self.1.max(0) as u32,
+            self.2.max(0) as u32,
+            self.3.max(0) as u32,
+        )
+    }
+}
+
 // Tuples up to 10 elements
 macro_rules! impl_into_children_tuple {
     ( $($idx:tt => $name:ident),+ ) => {

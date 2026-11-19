@@ -9,6 +9,10 @@ fun VStackView(node: DynamicUINode, dispatch: (String, org.json.JSONObject?) -> 
     val bgImg = node.getString("background_image", "")
     val radius = node.getInt("corner_radius", 0)
     val pad = node.getInt("padding", 0)
+    val padTop = node.getInt("padding_top", pad)
+    val padRight = node.getInt("padding_right", pad)
+    val padBottom = node.getInt("padding_bottom", pad)
+    val padLeft = node.getInt("padding_left", pad)
     val isHug = widthProp == "hug"
     var colMod = (if (isHug) Modifier else modifier).then(Modifier.applyContainerStyle(node))
     if (!isHug && (widthProp == "fill" || modifier == Modifier)) {
@@ -34,7 +38,7 @@ fun VStackView(node: DynamicUINode, dispatch: (String, org.json.JSONObject?) -> 
                 isContain = false, opacity = 1f, modifier = Modifier.matchParentSize()
             )
             Column(
-                modifier = (if (isHug) Modifier else Modifier.fillMaxWidth()).padding(pad.dp),
+                modifier = (if (isHug) Modifier else Modifier.fillMaxWidth()).padding(start = padLeft.dp, top = padTop.dp, end = padRight.dp, bottom = padBottom.dp),
                 verticalArrangement = vArrangement,
                 horizontalAlignment = hAlign
             ) {

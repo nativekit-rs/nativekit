@@ -96,9 +96,24 @@ impl VStack {
         self
     }
 
-    pub fn padding(mut self, padding: u32) -> Self {
-        self.props.retain(|(k, _)| k != "padding");
-        self.props.push(("padding".to_string(), PropValue::Int(padding)));
+    pub fn padding(mut self, padding: impl crate::engine::builder::IntoPaddingProp) -> Self {
+        self.props.retain(|(k, _)| !matches!(k.as_str(), "padding" | "padding_system" | "padding_top" | "padding_right" | "padding_bottom" | "padding_left"));
+        match padding.into_padding_prop() {
+            crate::engine::builder::PaddingSpec::System => {
+                self.props.push(("padding_system".to_string(), PropValue::Bool(true)));
+                self.props.push(("padding".to_string(), PropValue::Int(16)));
+            }
+            crate::engine::builder::PaddingSpec::Sides(t, r, b, l) => {
+                if t == r && r == b && b == l {
+                    self.props.push(("padding".to_string(), PropValue::Int(t)));
+                } else {
+                    self.props.push(("padding_top".to_string(), PropValue::Int(t)));
+                    self.props.push(("padding_right".to_string(), PropValue::Int(r)));
+                    self.props.push(("padding_bottom".to_string(), PropValue::Int(b)));
+                    self.props.push(("padding_left".to_string(), PropValue::Int(l)));
+                }
+            }
+        }
         self
     }
 
@@ -145,6 +160,10 @@ pub const VSTACK_ANDROID_SNIPPET: &str = r#"
         val bgImg = node.getString("background_image", "")
         val radius = node.getInt("corner_radius", 0)
         val pad = node.getInt("padding", 0)
+        val padTop = node.getInt("padding_top", pad)
+        val padRight = node.getInt("padding_right", pad)
+        val padBottom = node.getInt("padding_bottom", pad)
+        val padLeft = node.getInt("padding_left", pad)
         val isHug = widthProp == "hug"
         var colMod = (if (isHug) Modifier else modifier).then(Modifier.applyContainerStyle(node))
         if (!isHug && (widthProp == "fill" || modifier == Modifier)) {
@@ -170,7 +189,7 @@ pub const VSTACK_ANDROID_SNIPPET: &str = r#"
                     isContain = false, opacity = 1f, modifier = Modifier.matchParentSize()
                 )
                 Column(
-                    modifier = (if (isHug) Modifier else Modifier.fillMaxWidth()).padding(pad.dp),
+                    modifier = (if (isHug) Modifier else Modifier.fillMaxWidth()).padding(start = padLeft.dp, top = padTop.dp, end = padRight.dp, bottom = padBottom.dp),
                     verticalArrangement = vArrangement,
                     horizontalAlignment = hAlign
                 ) {
