@@ -31,8 +31,8 @@ impl Switch {
         self.props.push(("title".to_string(), PropValue::String(title.into())));
         self
     }
-    pub fn value(mut self, value: bool) -> Self {
-        self.props.push(("value".to_string(), PropValue::Bool(value)));
+    pub fn value(mut self, value: impl crate::engine::builder::IntoBoolProp) -> Self {
+        self.props.push(("value".to_string(), PropValue::Bool(value.into_bool_prop())));
         self
     }
 }

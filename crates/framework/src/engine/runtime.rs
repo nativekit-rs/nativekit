@@ -375,6 +375,580 @@ pub fn get_theme_mode() -> String { Theme::current().mode }
 pub fn set_accent_mode(mode: impl Into<String>) { Theme::set_accent(mode); }
 pub fn get_accent_mode() -> String { Theme::current().accent }
 
+fn notify_state_change() {
+    crate::engine::dev_server::notify_reload();
+    trigger_refresh();
+}
+
+pub trait SetStateValue<T, M> {
+    fn into_state_val(self) -> T;
+}
+
+pub struct DirectValMarker;
+pub struct StrToOptStringMarker;
+pub struct UnitToNoneMarker;
+
+impl<T, U: Into<T>> SetStateValue<T, DirectValMarker> for U {
+    fn into_state_val(self) -> T {
+        self.into()
+    }
+}
+
+impl SetStateValue<Option<String>, StrToOptStringMarker> for &str {
+    fn into_state_val(self) -> Option<String> {
+        Some(self.to_string())
+    }
+}
+
+impl<T> SetStateValue<Option<T>, UnitToNoneMarker> for () {
+    fn into_state_val(self) -> Option<T> {
+        None
+    }
+}
+
+pub struct StateVar<T: 'static> {
+    cell: OnceLock<Mutex<T>>,
+    init: fn() -> T,
+}
+
+impl<T: 'static> StateVar<T> {
+    pub const fn new(init: fn() -> T) -> Self {
+        Self {
+            cell: OnceLock::new(),
+            init,
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, T> {
+        self.cell
+            .get_or_init(|| Mutex::new((self.init)()))
+            .lock()
+            .unwrap()
+    }
+}
+
+impl<T: Clone + 'static> StateVar<T> {
+    pub fn get(&self) -> T {
+        self.lock().clone()
+    }
+
+    pub fn set<M>(&self, val: impl SetStateValue<T, M>) {
+        *self.lock() = val.into_state_val();
+        notify_state_change();
+    }
+
+    pub fn update(&self, f: impl FnOnce(&mut T)) {
+        {
+            let mut guard = self.lock();
+            f(&mut *guard);
+        }
+        notify_state_change();
+    }
+
+    pub fn reset(&self) {
+        *self.lock() = (self.init)();
+        notify_state_change();
+    }
+}
+
+impl<T: Clone + 'static> StateVar<Option<T>> {
+    pub fn clear(&self) {
+        *self.lock() = None;
+        notify_state_change();
+    }
+
+    pub fn is_some(&self) -> bool {
+        self.lock().is_some()
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.lock().is_none()
+    }
+}
+
+impl<T: Clone + std::fmt::Display + 'static> std::fmt::Display for StateVar<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.get(), f)
+    }
+}
+
+impl<T: Clone + std::fmt::Debug + 'static> std::fmt::Debug for StateVar<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.get(), f)
+    }
+}
+
+impl<T: Clone + PartialEq + 'static> PartialEq<T> for StateVar<T> {
+    fn eq(&self, other: &T) -> bool {
+        &self.get() == other
+    }
+}
+
+impl PartialEq<&str> for StateVar<String> {
+    fn eq(&self, other: &&str) -> bool {
+        self.get().as_str() == *other
+    }
+}
+
+impl<T: Clone + PartialOrd + 'static> PartialOrd<T> for StateVar<T> {
+    fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
+        self.get().partial_cmp(other)
+    }
+}
+
+impl<T: Clone + std::ops::Add<Output = T> + 'static> std::ops::Add<T> for &StateVar<T> {
+    type Output = T;
+    fn add(self, rhs: T) -> T {
+        self.get() + rhs
+    }
+}
+
+impl<T: Clone + std::ops::Sub<Output = T> + 'static> std::ops::Sub<T> for &StateVar<T> {
+    type Output = T;
+    fn sub(self, rhs: T) -> T {
+        self.get() - rhs
+    }
+}
+
+impl<T: Clone + std::ops::Mul<Output = T> + 'static> std::ops::Mul<T> for &StateVar<T> {
+    type Output = T;
+    fn mul(self, rhs: T) -> T {
+        self.get() * rhs
+    }
+}
+
+impl<T: Clone + std::ops::Div<Output = T> + 'static> std::ops::Div<T> for &StateVar<T> {
+    type Output = T;
+    fn div(self, rhs: T) -> T {
+        self.get() / rhs
+    }
+}
+
+impl std::ops::Not for &StateVar<bool> {
+    type Output = bool;
+    fn not(self) -> bool {
+        !self.get()
+    }
+}
+
+impl std::ops::Not for StateVar<bool> {
+    type Output = bool;
+    fn not(self) -> bool {
+        !self.get()
+    }
+}
+
+impl From<StateVar<String>> for String {
+    fn from(s: StateVar<String>) -> String {
+        s.get()
+    }
+}
+
+impl From<StateVar<bool>> for bool {
+    fn from(s: StateVar<bool>) -> bool {
+        s.get()
+    }
+}
+
+impl From<StateVar<i32>> for i32 {
+    fn from(s: StateVar<i32>) -> i32 {
+        s.get()
+    }
+}
+
+impl From<StateVar<u32>> for u32 {
+    fn from(s: StateVar<u32>) -> u32 {
+        s.get()
+    }
+}
+
+impl From<StateVar<f32>> for f32 {
+    fn from(s: StateVar<f32>) -> f32 {
+        s.get()
+    }
+}
+
+impl crate::engine::builder::IntoBoolProp for StateVar<bool> {
+    fn into_bool_prop(self) -> bool {
+        self.get()
+    }
+}
+
+#[derive(Copy, Clone)]
+pub struct StateRef<T: 'static>(pub fn() -> &'static StateVar<T>);
+
+impl<T: 'static> StateRef<T> {
+    pub const fn new(getter: fn() -> &'static StateVar<T>) -> Self {
+        Self(getter)
+    }
+}
+
+impl<T: 'static> std::ops::Deref for StateRef<T> {
+    type Target = StateVar<T>;
+    fn deref(&self) -> &Self::Target {
+        (self.0)()
+    }
+}
+
+impl<T: Clone + 'static> StateRef<T> {
+    pub fn get(&self) -> T {
+        (self.0)().get()
+    }
+
+    pub fn set<M>(&self, val: impl SetStateValue<T, M>) {
+        (self.0)().set(val);
+    }
+
+    pub fn update(&self, f: impl FnOnce(&mut T)) {
+        (self.0)().update(f);
+    }
+
+    pub fn reset(&self) {
+        (self.0)().reset();
+    }
+}
+
+impl<T: Clone + 'static> StateRef<Option<T>> {
+    pub fn clear(&self) {
+        (self.0)().clear();
+    }
+
+    pub fn is_some(&self) -> bool {
+        (self.0)().is_some()
+    }
+
+    pub fn is_none(&self) -> bool {
+        (self.0)().is_none()
+    }
+}
+
+impl<T: Clone + std::fmt::Display + 'static> std::fmt::Display for StateRef<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&(self.0)().get(), f)
+    }
+}
+
+impl<T: Clone + std::fmt::Debug + 'static> std::fmt::Debug for StateRef<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&(self.0)().get(), f)
+    }
+}
+
+impl<T: Clone + PartialEq + 'static> PartialEq<T> for StateRef<T> {
+    fn eq(&self, other: &T) -> bool {
+        &(self.0)().get() == other
+    }
+}
+
+impl PartialEq<&str> for StateRef<String> {
+    fn eq(&self, other: &&str) -> bool {
+        (self.0)().get().as_str() == *other
+    }
+}
+
+impl<T: Clone + PartialOrd + 'static> PartialOrd<T> for StateRef<T> {
+    fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
+        (self.0)().get().partial_cmp(other)
+    }
+}
+
+impl<T: Clone + std::ops::Add<Output = T> + 'static> std::ops::Add<T> for StateRef<T> {
+    type Output = T;
+    fn add(self, rhs: T) -> T {
+        (self.0)().get() + rhs
+    }
+}
+
+impl<T: Clone + std::ops::Sub<Output = T> + 'static> std::ops::Sub<T> for StateRef<T> {
+    type Output = T;
+    fn sub(self, rhs: T) -> T {
+        (self.0)().get() - rhs
+    }
+}
+
+impl<T: Clone + std::ops::Mul<Output = T> + 'static> std::ops::Mul<T> for StateRef<T> {
+    type Output = T;
+    fn mul(self, rhs: T) -> T {
+        (self.0)().get() * rhs
+    }
+}
+
+impl<T: Clone + std::ops::Div<Output = T> + 'static> std::ops::Div<T> for StateRef<T> {
+    type Output = T;
+    fn div(self, rhs: T) -> T {
+        (self.0)().get() / rhs
+    }
+}
+
+impl std::ops::Not for StateRef<bool> {
+    type Output = bool;
+    fn not(self) -> bool {
+        !(self.0)().get()
+    }
+}
+
+impl From<StateRef<String>> for String {
+    fn from(s: StateRef<String>) -> String {
+        (s.0)().get()
+    }
+}
+
+impl From<StateRef<bool>> for bool {
+    fn from(s: StateRef<bool>) -> bool {
+        (s.0)().get()
+    }
+}
+
+impl From<StateRef<i32>> for i32 {
+    fn from(s: StateRef<i32>) -> i32 {
+        (s.0)().get()
+    }
+}
+
+impl From<StateRef<u32>> for u32 {
+    fn from(s: StateRef<u32>) -> u32 {
+        (s.0)().get()
+    }
+}
+
+impl From<StateRef<f32>> for f32 {
+    fn from(s: StateRef<f32>) -> f32 {
+        (s.0)().get()
+    }
+}
+
+impl crate::engine::builder::IntoBoolProp for StateRef<bool> {
+    fn into_bool_prop(self) -> bool {
+        (self.0)().get()
+    }
+}
+
+impl From<&StateVar<String>> for String {
+    fn from(s: &StateVar<String>) -> String {
+        s.get()
+    }
+}
+
+impl From<&StateVar<bool>> for bool {
+    fn from(s: &StateVar<bool>) -> bool {
+        s.get()
+    }
+}
+
+impl From<&StateVar<i32>> for i32 {
+    fn from(s: &StateVar<i32>) -> i32 {
+        s.get()
+    }
+}
+
+impl From<&StateVar<u32>> for u32 {
+    fn from(s: &StateVar<u32>) -> u32 {
+        s.get()
+    }
+}
+
+impl From<&StateVar<f32>> for f32 {
+    fn from(s: &StateVar<f32>) -> f32 {
+        s.get()
+    }
+}
+
+impl crate::engine::builder::IntoBoolProp for &StateVar<bool> {
+    fn into_bool_prop(self) -> bool {
+        self.get()
+    }
+}
+
+pub struct StateField<S: 'static, T: 'static> {
+    parent: fn() -> &'static StateVar<S>,
+    getter: fn(&S) -> T,
+    setter: fn(&mut S, T),
+    default_fn: fn() -> T,
+}
+
+impl<S: 'static, T: 'static> Copy for StateField<S, T> {}
+impl<S: 'static, T: 'static> Clone for StateField<S, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<S: 'static, T: Clone + 'static> StateField<S, T> {
+    pub const fn new(
+        parent: fn() -> &'static StateVar<S>,
+        getter: fn(&S) -> T,
+        setter: fn(&mut S, T),
+        default_fn: fn() -> T,
+    ) -> Self {
+        Self {
+            parent,
+            getter,
+            setter,
+            default_fn,
+        }
+    }
+
+    pub fn get(&self) -> T {
+        let guard = (self.parent)().lock();
+        (self.getter)(&*guard)
+    }
+
+    pub fn set<M>(&self, val: impl SetStateValue<T, M>) {
+        {
+            let mut guard = (self.parent)().lock();
+            (self.setter)(&mut *guard, val.into_state_val());
+        }
+        notify_state_change();
+    }
+
+    pub fn update(&self, f: impl FnOnce(&mut T)) {
+        {
+            let mut guard = (self.parent)().lock();
+            let mut cur = (self.getter)(&*guard);
+            f(&mut cur);
+            (self.setter)(&mut *guard, cur);
+        }
+        notify_state_change();
+    }
+
+    pub fn reset(&self) {
+        {
+            let mut guard = (self.parent)().lock();
+            (self.setter)(&mut *guard, (self.default_fn)());
+        }
+        notify_state_change();
+    }
+}
+
+impl<S: 'static, T: Clone + 'static> StateField<S, Option<T>> {
+    pub fn clear(&self) {
+        {
+            let mut guard = (self.parent)().lock();
+            (self.setter)(&mut *guard, None);
+        }
+        notify_state_change();
+    }
+
+    pub fn is_some(&self) -> bool {
+        let guard = (self.parent)().lock();
+        (self.getter)(&*guard).is_some()
+    }
+
+    pub fn is_none(&self) -> bool {
+        let guard = (self.parent)().lock();
+        (self.getter)(&*guard).is_none()
+    }
+}
+
+impl<S: 'static, T: Clone + std::fmt::Display + 'static> std::fmt::Display for StateField<S, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.get(), f)
+    }
+}
+
+impl<S: 'static, T: Clone + std::fmt::Debug + 'static> std::fmt::Debug for StateField<S, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.get(), f)
+    }
+}
+
+impl<S: 'static, T: Clone + PartialEq + 'static> PartialEq<T> for StateField<S, T> {
+    fn eq(&self, other: &T) -> bool {
+        &self.get() == other
+    }
+}
+
+impl<S: 'static> PartialEq<&str> for StateField<S, String> {
+    fn eq(&self, other: &&str) -> bool {
+        self.get().as_str() == *other
+    }
+}
+
+impl<S: 'static, T: Clone + PartialOrd + 'static> PartialOrd<T> for StateField<S, T> {
+    fn partial_cmp(&self, other: &T) -> Option<std::cmp::Ordering> {
+        self.get().partial_cmp(other)
+    }
+}
+
+impl<S: 'static, T: Clone + std::ops::Add<Output = T> + 'static> std::ops::Add<T>
+    for StateField<S, T>
+{
+    type Output = T;
+    fn add(self, rhs: T) -> T {
+        self.get() + rhs
+    }
+}
+
+impl<S: 'static, T: Clone + std::ops::Sub<Output = T> + 'static> std::ops::Sub<T>
+    for StateField<S, T>
+{
+    type Output = T;
+    fn sub(self, rhs: T) -> T {
+        self.get() - rhs
+    }
+}
+
+impl<S: 'static, T: Clone + std::ops::Mul<Output = T> + 'static> std::ops::Mul<T>
+    for StateField<S, T>
+{
+    type Output = T;
+    fn mul(self, rhs: T) -> T {
+        self.get() * rhs
+    }
+}
+
+impl<S: 'static, T: Clone + std::ops::Div<Output = T> + 'static> std::ops::Div<T>
+    for StateField<S, T>
+{
+    type Output = T;
+    fn div(self, rhs: T) -> T {
+        self.get() / rhs
+    }
+}
+
+impl<S: 'static> std::ops::Not for StateField<S, bool> {
+    type Output = bool;
+    fn not(self) -> bool {
+        !self.get()
+    }
+}
+
+impl<S: 'static> From<StateField<S, String>> for String {
+    fn from(s: StateField<S, String>) -> String {
+        s.get()
+    }
+}
+
+impl<S: 'static> From<StateField<S, bool>> for bool {
+    fn from(s: StateField<S, bool>) -> bool {
+        s.get()
+    }
+}
+
+impl<S: 'static> From<StateField<S, i32>> for i32 {
+    fn from(s: StateField<S, i32>) -> i32 {
+        s.get()
+    }
+}
+
+impl<S: 'static> From<StateField<S, u32>> for u32 {
+    fn from(s: StateField<S, u32>) -> u32 {
+        s.get()
+    }
+}
+
+impl<S: 'static> From<StateField<S, f32>> for f32 {
+    fn from(s: StateField<S, f32>) -> f32 {
+        s.get()
+    }
+}
+
+impl<S: 'static> crate::engine::builder::IntoBoolProp for StateField<S, bool> {
+    fn into_bool_prop(self) -> bool {
+        self.get()
+    }
+}
+
 pub fn get_os_accent_hex() -> String {
     static CACHED: OnceLock<String> = OnceLock::new();
     CACHED.get_or_init(|| {

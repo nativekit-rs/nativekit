@@ -842,6 +842,543 @@ fn is_valid_snake_case_ident(s: &str) -> bool {
         .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
 }
 
+enum ParsedStateKind {
+    Single {
+        ty: Type,
+        init_expr: TokenStream2,
+    },
+    Object {
+        fields: Vec<(Ident, Type, TokenStream2)>,
+    },
+}
+
+struct ParsedStateDecl {
+    is_pub: bool,
+    ident: Ident,
+    kind: ParsedStateKind,
+}
+
+fn infer_state_type_and_init(expr_tokens: &[TokenTree]) -> Option<(Type, TokenStream2)> {
+    if expr_tokens.is_empty() {
+        return None;
+    }
+    if expr_tokens.len() == 1 {
+        match &expr_tokens[0] {
+            TokenTree::Literal(lit) => {
+                let s = lit.to_string();
+                if s.starts_with('"') || s.starts_with("r\"") || s.starts_with("r#") {
+                    let ty: Type = syn::parse2(quote! { String }).unwrap();
+                    return Some((ty, quote! { (#lit).into() }));
+                } else if s.contains('.') {
+                    let ty: Type = syn::parse2(quote! { f32 }).unwrap();
+                    return Some((ty, quote! { #lit }));
+                } else if s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                    let ty: Type = syn::parse2(quote! { i32 }).unwrap();
+                    return Some((ty, quote! { #lit }));
+                }
+            }
+            TokenTree::Ident(id) => {
+                if id == "true" || id == "false" {
+                    let ty: Type = syn::parse2(quote! { bool }).unwrap();
+                    return Some((ty, quote! { #id }));
+                }
+                if id == "None" {
+                    let ty: Type = syn::parse2(quote! { ::std::option::Option<String> }).unwrap();
+                    return Some((ty, quote! { ::std::option::Option::None }));
+                }
+            }
+            _ => {}
+        }
+    }
+    if expr_tokens.len() == 2 {
+        if let (TokenTree::Punct(neg), TokenTree::Literal(lit)) =
+            (&expr_tokens[0], &expr_tokens[1])
+        {
+            if neg.as_char() == '-' {
+                let s = lit.to_string();
+                if s.contains('.') {
+                    let ty: Type = syn::parse2(quote! { f32 }).unwrap();
+                    return Some((ty, quote! { -#lit }));
+                } else if s.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                    let ty: Type = syn::parse2(quote! { i32 }).unwrap();
+                    return Some((ty, quote! { -#lit }));
+                }
+            }
+        }
+        if let (TokenTree::Ident(id), TokenTree::Group(g)) = (&expr_tokens[0], &expr_tokens[1]) {
+            if id == "Some" && g.delimiter() == Delimiter::Parenthesis {
+                let inner: Vec<TokenTree> = g.stream().into_iter().collect();
+                if let Some((inner_ty, inner_init)) = infer_state_type_and_init(&inner) {
+                    let ty: Type =
+                        syn::parse2(quote! { ::std::option::Option<#inner_ty> }).unwrap();
+                    return Some((ty, quote! { ::std::option::Option::Some(#inner_init) }));
+                }
+            }
+        }
+    }
+    if expr_tokens.len() >= 3 {
+        if let (TokenTree::Ident(ty_id), TokenTree::Punct(p1), TokenTree::Punct(p2)) =
+            (&expr_tokens[0], &expr_tokens[1], &expr_tokens[2])
+        {
+            if p1.as_char() == ':'
+                && p2.as_char() == ':'
+                && ty_id
+                    .to_string()
+                    .chars()
+                    .next()
+                    .map(|c| c.is_ascii_uppercase())
+                    .unwrap_or(false)
+            {
+                let ty: Type = syn::parse2(quote! { #ty_id }).ok()?;
+                let ts = transform_rust_tokens(expr_tokens);
+                return Some((normalize_friendly_type(ty), ts));
+            }
+        }
+    }
+    None
+}
+
+fn split_top_level_commas(tokens: Vec<TokenTree>) -> Vec<Vec<TokenTree>> {
+    let mut chunks = Vec::new();
+    let mut cur = Vec::new();
+    let mut angle_depth: usize = 0;
+    for tok in tokens {
+        match &tok {
+            TokenTree::Punct(p) if p.as_char() == '<' => {
+                angle_depth += 1;
+                cur.push(tok);
+            }
+            TokenTree::Punct(p) if p.as_char() == '>' && angle_depth > 0 => {
+                angle_depth -= 1;
+                cur.push(tok);
+            }
+            TokenTree::Punct(p) if p.as_char() == ',' && angle_depth == 0 => {
+                if !cur.is_empty() {
+                    chunks.push(std::mem::take(&mut cur));
+                }
+            }
+            _ => cur.push(tok),
+        }
+    }
+    if !cur.is_empty() {
+        chunks.push(cur);
+    }
+    chunks
+}
+
+fn parse_object_state_fields(brace_group: &Group) -> Vec<(Ident, Type, TokenStream2)> {
+    let all_tokens: Vec<TokenTree> = brace_group.stream().into_iter().collect();
+    let chunks = split_top_level_commas(all_tokens);
+    let mut fields = Vec::new();
+
+    for chunk in chunks {
+        let mut idx = 0usize;
+        let Some(TokenTree::Ident(f_ident)) = chunk.get(idx).cloned() else {
+            continue;
+        };
+        idx += 1;
+
+        let mut is_optional_mark = false;
+        if matches!(chunk.get(idx), Some(TokenTree::Punct(p)) if p.as_char() == '?') {
+            is_optional_mark = true;
+            idx += 1;
+        }
+        if matches!(chunk.get(idx), Some(TokenTree::Punct(p)) if p.as_char() == ':') {
+            idx += 1;
+        }
+
+        let rest = &chunk[idx..];
+        let mut eq_pos = None;
+        let mut ad = 0usize;
+        for (i, t) in rest.iter().enumerate() {
+            match t {
+                TokenTree::Punct(p) if p.as_char() == '<' => ad += 1,
+                TokenTree::Punct(p) if p.as_char() == '>' && ad > 0 => ad -= 1,
+                TokenTree::Punct(p) if p.as_char() == '=' && ad == 0 => {
+                    eq_pos = Some(i);
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(ep) = eq_pos {
+            let ty_slice = &rest[..ep];
+            let def_slice = &rest[ep + 1..];
+            let parsed_ty = if ty_slice.is_empty() {
+                infer_state_type_and_init(def_slice).map(|(t, _)| t)
+            } else {
+                let ts = TokenStream2::from_iter(ty_slice.iter().cloned());
+                syn::parse2::<Type>(ts).ok().map(normalize_friendly_type)
+            };
+            let Some(mut f_ty) = parsed_ty else {
+                continue;
+            };
+            if is_optional_mark && extract_option_inner_type(&f_ty).is_none() {
+                f_ty = syn::parse2(quote! { ::std::option::Option<#f_ty> }).unwrap();
+            }
+            let init_expr = if def_slice.len() == 1
+                && matches!(&def_slice[0], TokenTree::Ident(id) if id == "None")
+            {
+                quote! { ::std::option::Option::None }
+            } else if def_slice.is_empty() {
+                quote! { ::std::default::Default::default() }
+            } else {
+                let d_ts = transform_rust_tokens(def_slice);
+                if extract_option_inner_type(&f_ty).is_some()
+                    && !matches!(
+                        def_slice.first(),
+                        Some(TokenTree::Ident(id)) if id == "Some" || id == "None" || id == "Option"
+                    )
+                {
+                    quote! { ::std::option::Option::Some((#d_ts).into()) }
+                } else {
+                    quote! { (#d_ts).into() }
+                }
+            };
+            fields.push((f_ident, f_ty, init_expr));
+        } else if is_optional_mark {
+            let f_ty = if rest.is_empty() {
+                syn::parse2::<Type>(quote! { ::std::option::Option<String> }).unwrap()
+            } else {
+                let ts = TokenStream2::from_iter(rest.iter().cloned());
+                let Some(base_ty) = syn::parse2::<Type>(ts).ok().map(normalize_friendly_type) else {
+                    continue;
+                };
+                if extract_option_inner_type(&base_ty).is_some() {
+                    base_ty
+                } else {
+                    syn::parse2(quote! { ::std::option::Option<#base_ty> }).unwrap()
+                }
+            };
+            fields.push((f_ident, f_ty, quote! { ::std::option::Option::None }));
+        } else if let Some((inf_ty, inf_init)) = infer_state_type_and_init(rest) {
+            fields.push((f_ident, inf_ty, inf_init));
+        } else if !rest.is_empty() {
+            let ts = TokenStream2::from_iter(rest.iter().cloned());
+            if let Ok(parsed_ty) = syn::parse2::<Type>(ts) {
+                let f_ty = normalize_friendly_type(parsed_ty);
+                fields.push((f_ident, f_ty, quote! { ::std::default::Default::default() }));
+            }
+        }
+    }
+
+    fields
+}
+
+fn rewrite_state_init_with_ty(base_ty: &Type, inner_tokens: &[TokenTree]) -> TokenStream2 {
+    if inner_tokens.len() == 1 && matches!(&inner_tokens[0], TokenTree::Ident(id) if id == "None") {
+        return quote! { ::std::option::Option::None };
+    }
+    let unwrapped = extract_option_inner_type(base_ty).unwrap_or(base_ty);
+    if let Type::Path(tp) = unwrapped {
+        if let Some(last_seg) = tp.path.segments.last() {
+            let table_name = match last_seg.ident.to_string().as_str() {
+                "Color" => Some("color"),
+                "Font" => Some("font"),
+                "IconName" => Some("icon"),
+                _ => None,
+            };
+            if let Some(tbl) = table_name {
+                if let Some(TokenTree::Punct(p)) = inner_tokens.first() {
+                    if p.as_char() == '.' {
+                        let rewritten = rewrite_leading_dot_tokens(tbl, p.span(), inner_tokens);
+                        if extract_option_inner_type(base_ty).is_some() {
+                            return quote! { ::std::option::Option::Some((#rewritten).into()) };
+                        }
+                        return quote! { (#rewritten).into() };
+                    }
+                }
+            }
+        }
+    }
+    let d_ts = transform_rust_tokens(inner_tokens);
+    if extract_option_inner_type(base_ty).is_some()
+        && !matches!(
+            inner_tokens.first(),
+            Some(TokenTree::Ident(id)) if id == "Some" || id == "None" || id == "Option"
+        )
+    {
+        quote! { ::std::option::Option::Some((#d_ts).into()) }
+    } else {
+        quote! { (#d_ts).into() }
+    }
+}
+
+fn try_parse_state_decl(tokens: &[TokenTree], start: usize) -> Option<(ParsedStateDecl, usize)> {
+    let mut idx = start;
+    let is_pub = matches!(tokens.get(idx), Some(TokenTree::Ident(id)) if id == "pub");
+    if is_pub {
+        idx += 1;
+    }
+    let Some(TokenTree::Ident(let_kw)) = tokens.get(idx) else {
+        return None;
+    };
+    if let_kw != "let" {
+        return None;
+    }
+    idx += 1;
+
+    let Some(TokenTree::Ident(var_ident)) = tokens.get(idx).cloned() else {
+        return None;
+    };
+    idx += 1;
+
+    let mut is_optional_mark = false;
+    if matches!(tokens.get(idx), Some(TokenTree::Punct(p)) if p.as_char() == '?') {
+        is_optional_mark = true;
+        idx += 1;
+    }
+
+    let mut eq_idx = None;
+    let mut ad = 0usize;
+    for i in idx..tokens.len() {
+        match &tokens[i] {
+            TokenTree::Punct(p) if p.as_char() == '<' => ad += 1,
+            TokenTree::Punct(p) if p.as_char() == '>' && ad > 0 => ad -= 1,
+            TokenTree::Punct(p) if p.as_char() == '=' && ad == 0 => {
+                eq_idx = Some(i);
+                break;
+            }
+            TokenTree::Punct(p) if p.as_char() == ';' && ad == 0 => return None,
+            TokenTree::Group(g) if g.delimiter() == Delimiter::Brace && ad == 0 => return None,
+            _ => {}
+        }
+    }
+    let eq_idx = eq_idx?;
+
+    let explicit_ty: Option<Type> = if idx < eq_idx {
+        let type_slice = &tokens[idx..eq_idx];
+        if !matches!(type_slice.first(), Some(TokenTree::Punct(p)) if p.as_char() == ':') {
+            return None;
+        }
+        let ts = TokenStream2::from_iter(type_slice[1..].iter().cloned());
+        let parsed = syn::parse2::<Type>(ts).ok()?;
+        Some(normalize_friendly_type(parsed))
+    } else {
+        None
+    };
+
+    let Some(TokenTree::Ident(use_state_id)) = tokens.get(eq_idx + 1) else {
+        return None;
+    };
+    if use_state_id != "use_state" {
+        return None;
+    }
+    let Some(TokenTree::Group(arg_group)) = tokens.get(eq_idx + 2) else {
+        return None;
+    };
+    if arg_group.delimiter() != Delimiter::Parenthesis {
+        return None;
+    }
+
+    let mut next_idx = eq_idx + 3;
+    if matches!(tokens.get(next_idx), Some(TokenTree::Punct(p)) if p.as_char() == ';') {
+        next_idx += 1;
+    }
+
+    let inner_tokens: Vec<TokenTree> = arg_group.stream().into_iter().collect();
+    if inner_tokens.is_empty() {
+        return None;
+    }
+
+    if inner_tokens.len() == 1 {
+        if let TokenTree::Group(g) = &inner_tokens[0] {
+            if g.delimiter() == Delimiter::Brace {
+                let fields = parse_object_state_fields(g);
+                return Some((
+                    ParsedStateDecl {
+                        is_pub,
+                        ident: var_ident,
+                        kind: ParsedStateKind::Object { fields },
+                    },
+                    next_idx,
+                ));
+            }
+        }
+    }
+
+    let (ty, init_expr) = if let Some(base_ty) = explicit_ty {
+        let final_ty = if is_optional_mark && extract_option_inner_type(&base_ty).is_none() {
+            syn::parse2(quote! { ::std::option::Option<#base_ty> }).unwrap()
+        } else {
+            base_ty
+        };
+        let init_expr = rewrite_state_init_with_ty(&final_ty, &inner_tokens);
+        (final_ty, init_expr)
+    } else {
+        let (mut inf_ty, mut inf_init) = infer_state_type_and_init(&inner_tokens)?;
+        if is_optional_mark && extract_option_inner_type(&inf_ty).is_none() {
+            inf_ty = syn::parse2(quote! { ::std::option::Option<#inf_ty> }).unwrap();
+            inf_init = quote! { ::std::option::Option::Some(#inf_init) };
+        }
+        (inf_ty, inf_init)
+    };
+
+    Some((
+        ParsedStateDecl {
+            is_pub,
+            ident: var_ident,
+            kind: ParsedStateKind::Single { ty, init_expr },
+        },
+        next_idx,
+    ))
+}
+
+fn emit_state_decl_items(
+    decl: &ParsedStateDecl,
+    scope_prefix: &str,
+    emit_pub_const_at_mod: bool,
+) -> (TokenStream2, TokenStream2, TokenStream2) {
+    let var_ident = &decl.ident;
+    let vis = if decl.is_pub {
+        quote! { pub }
+    } else {
+        TokenStream2::new()
+    };
+    let getter_fn = Ident::new(
+        &format!("__nk_state_get_{}_{}", scope_prefix, var_ident),
+        var_ident.span(),
+    );
+
+    let (mod_items, handle_ty, handle_init) = match &decl.kind {
+        ParsedStateKind::Single { ty, init_expr } => {
+            let mod_it = quote! {
+                #[doc(hidden)]
+                #[allow(non_snake_case, dead_code)]
+                fn #getter_fn() -> &'static ::native_kit::StateVar<#ty> {
+                    #[allow(unused_imports)]
+                    use ::native_kit::*;
+                    #[allow(unused_imports)]
+                    use crate::__nk_auto::*;
+                    #[allow(unused_imports)]
+                    use crate::app::*;
+                    static CELL: ::native_kit::StateVar<#ty> =
+                        ::native_kit::StateVar::new(|| #init_expr);
+                    &CELL
+                }
+            };
+            (
+                mod_it,
+                quote! { ::native_kit::StateRef<#ty> },
+                quote! { ::native_kit::StateRef::new(#getter_fn) },
+            )
+        }
+        ParsedStateKind::Object { fields } => {
+            let data_struct_ident = Ident::new(
+                &format!("__NkStateData_{}_{}", scope_prefix, var_ident),
+                var_ident.span(),
+            );
+            let handle_struct_ident = Ident::new(
+                &format!("__NkStateHandle_{}_{}", scope_prefix, var_ident),
+                var_ident.span(),
+            );
+
+            let mut data_fields = Vec::new();
+            let mut data_inits = Vec::new();
+            let mut handle_fields = Vec::new();
+            let mut handle_inits = Vec::new();
+
+            for (f_id, f_ty, f_init) in fields {
+                data_fields.push(quote! { pub #f_id: #f_ty });
+                data_inits.push(quote! { #f_id: #f_init });
+                handle_fields.push(
+                    quote! { pub #f_id: ::native_kit::StateField<#data_struct_ident, #f_ty> },
+                );
+                handle_inits.push(quote! {
+                    #f_id: ::native_kit::StateField::new(
+                        #getter_fn,
+                        |s| s.#f_id.clone(),
+                        |s, v| s.#f_id = v,
+                        || #f_init,
+                    )
+                });
+            }
+
+            let mod_it = quote! {
+                #[doc(hidden)]
+                #[allow(non_camel_case_types, non_snake_case, dead_code)]
+                #[derive(Clone, Debug)]
+                #vis struct #data_struct_ident {
+                    #( #data_fields ),*
+                }
+
+                #[doc(hidden)]
+                #[allow(non_snake_case, dead_code)]
+                fn #getter_fn() -> &'static ::native_kit::StateVar<#data_struct_ident> {
+                    #[allow(unused_imports)]
+                    use ::native_kit::*;
+                    #[allow(unused_imports)]
+                    use crate::__nk_auto::*;
+                    #[allow(unused_imports)]
+                    use crate::app::*;
+                    static CELL: ::native_kit::StateVar<#data_struct_ident> =
+                        ::native_kit::StateVar::new(|| #data_struct_ident {
+                            #( #data_inits ),*
+                        });
+                    &CELL
+                }
+
+                #[doc(hidden)]
+                #[allow(non_camel_case_types, non_snake_case, dead_code)]
+                #[derive(Copy, Clone)]
+                #vis struct #handle_struct_ident {
+                    #( #handle_fields ),*
+                }
+
+                impl #handle_struct_ident {
+                    #[allow(dead_code)]
+                    pub fn get(&self) -> #data_struct_ident {
+                        #getter_fn().get()
+                    }
+
+                    #[allow(dead_code)]
+                    pub fn update(&self, f: impl ::std::ops::FnOnce(&mut #data_struct_ident)) {
+                        #getter_fn().update(f);
+                    }
+
+                    #[allow(dead_code)]
+                    pub fn reset(&self) {
+                        #getter_fn().reset();
+                    }
+                }
+            };
+            (
+                mod_it,
+                quote! { #handle_struct_ident },
+                quote! { #handle_struct_ident { #( #handle_inits ),* } },
+            )
+        }
+    };
+
+    if emit_pub_const_at_mod {
+        let mod_const = quote! {
+            #mod_items
+            #[allow(non_upper_case_globals, dead_code)]
+            #vis const #var_ident: #handle_ty = #handle_init;
+        };
+        return (mod_const, TokenStream2::new(), TokenStream2::new());
+    }
+
+    if decl.is_pub {
+        let assoc = quote! {
+            #[allow(non_upper_case_globals, dead_code)]
+            pub const #var_ident: #handle_ty = #handle_init;
+        };
+        let local = quote! {
+            #[allow(non_upper_case_globals)]
+            const #var_ident: #handle_ty = Self::#var_ident;
+        };
+        (mod_items, assoc, local)
+    } else {
+        let local = quote! {
+            #[allow(non_upper_case_globals)]
+            const #var_ident: #handle_ty = #handle_init;
+        };
+        (mod_items, TokenStream2::new(), local)
+    }
+}
+
 #[proc_macro_attribute]
 pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     expand_component(attr, item)
@@ -989,7 +1526,41 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    let transformed_body = expand_component_body(&raw_body_tokens, &parsed_params, fn_name);
+    let mut state_mod_items = Vec::new();
+    let mut state_assoc_consts = Vec::new();
+    let mut state_local_bindings = Vec::new();
+    let mut filtered_body_tokens = Vec::new();
+
+    let mut body_pos = 0usize;
+    while body_pos < raw_body_tokens.len() {
+        if let Some((decl, next_pos)) = try_parse_state_decl(&raw_body_tokens, body_pos) {
+            let (mod_it, assoc_it, local_it) =
+                emit_state_decl_items(&decl, &fn_name_str, false);
+            state_mod_items.push(mod_it);
+            if !assoc_it.is_empty() {
+                state_assoc_consts.push(assoc_it);
+            }
+            state_local_bindings.push(local_it);
+            body_pos = next_pos;
+            continue;
+        }
+        if matches!(raw_body_tokens.get(body_pos), Some(TokenTree::Ident(id)) if id == "let") {
+            while body_pos < raw_body_tokens.len() {
+                let tok = raw_body_tokens[body_pos].clone();
+                body_pos += 1;
+                let is_semi = matches!(&tok, TokenTree::Punct(p) if p.as_char() == ';');
+                filtered_body_tokens.push(tok);
+                if is_semi {
+                    break;
+                }
+            }
+            continue;
+        }
+        filtered_body_tokens.extend_from_slice(&raw_body_tokens[body_pos..]);
+        break;
+    }
+
+    let transformed_body = expand_component_body(&filtered_body_tokens, &parsed_params, fn_name);
 
     let mut field_defs = Vec::new();
     let mut default_inits = Vec::new();
@@ -1451,6 +2022,8 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         impl #fn_generics #fn_name #fn_generics {
+            #( #state_assoc_consts )*
+
             pub fn #new_fn_ident() -> Self {
                 Self {
                     #( #default_inits ),*
@@ -1476,10 +2049,13 @@ fn expand_component(attr: TokenStream, item: TokenStream) -> TokenStream {
                 use crate::__nk_auto::*;
                 #[allow(unused_imports)]
                 use crate::app::*;
+                #( #state_local_bindings )*
                 #( #local_bindings )*
                 #transformed_body
             }
         }
+
+        #( #state_mod_items )*
 
         impl #fn_generics ::native_kit::IntoNode for #fn_name #fn_generics {
             fn into_node(self) -> ::native_kit::Node {
@@ -1745,11 +2321,18 @@ pub fn App(input: TokenStream) -> TokenStream {
     let mut idx = 0;
 
     let mut state_struct_tokens = TokenStream2::new();
+    let mut app_state_items: Vec<TokenStream2> = Vec::new();
     let mut tab_entries: Vec<TokenStream2> = Vec::new();
     let mut route_entries: Vec<TokenStream2> = Vec::new();
     let mut fallback_body_tokens: Vec<TokenTree> = Vec::new();
 
     while idx < tokens.len() {
+        if let Some((decl, next_idx)) = try_parse_state_decl(&tokens, idx) {
+            let (mod_items, _, _) = emit_state_decl_items(&decl, "App", true);
+            app_state_items.push(mod_items);
+            idx = next_idx;
+            continue;
+        }
         if let TokenTree::Ident(id) = &tokens[idx] {
             let id_str = id.to_string();
             if (id_str == "State" || id_str == "Store") && idx + 1 < tokens.len() {
@@ -1837,6 +2420,14 @@ pub fn App(input: TokenStream) -> TokenStream {
         idx += 1;
     }
 
+    if state_struct_tokens.is_empty() {
+        state_struct_tokens = quote! {
+            #[derive(Clone, Debug, Default)]
+            pub struct Store;
+            pub type AppState = Store;
+        };
+    }
+
     let app_body = if !route_entries.is_empty() || !tab_entries.is_empty() {
         quote! {
             ::native_kit::Router!(
@@ -1859,6 +2450,7 @@ pub fn App(input: TokenStream) -> TokenStream {
         use crate::__nk_auto::*;
 
         #state_struct_tokens
+        #( #app_state_items )*
 
         #[allow(non_snake_case)]
         pub fn App() -> impl ::native_kit::IntoNode {
@@ -1953,6 +2545,8 @@ fn expand_view_macro(input: TokenStream) -> TokenStream {
             {
                 #[allow(unused_imports)]
                 use crate::__nk_auto::*;
+                #[allow(unused_imports)]
+                use crate::app::*;
                 #prefix_stmts
                 #single
             }
@@ -1968,6 +2562,8 @@ fn expand_view_macro(input: TokenStream) -> TokenStream {
             use ::native_kit::*;
             #[allow(unused_imports)]
             use crate::__nk_auto::*;
+            #[allow(unused_imports)]
+            use crate::app::*;
             #prefix_stmts
             #out
         }
@@ -2900,8 +3496,11 @@ fn transform_rust_tokens(tokens: &[TokenTree]) -> TokenStream2 {
                     (&tokens[idx + 1], &tokens[idx + 2])
                 {
                     if arg_group.delimiter() == Delimiter::Parenthesis {
-                        let transformed_args =
-                            transform_method_args(method_ident, arg_group.stream(), None);
+                        let transformed_args = if method_ident == "set" && arg_group.stream().is_empty() {
+                            quote! { () }
+                        } else {
+                            transform_method_args(method_ident, arg_group.stream(), None)
+                        };
                         let mut new_group = Group::new(Delimiter::Parenthesis, transformed_args);
                         new_group.set_span(arg_group.span());
                         out.extend([

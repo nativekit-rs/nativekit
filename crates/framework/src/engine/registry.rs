@@ -160,6 +160,31 @@ where
     }
 }
 
+impl<F, R> ActionHandler<(String, R), ()> for F
+where
+    F: Fn(String) -> R + Send + Sync + 'static,
+    R: 'static,
+{
+    fn invoke(&self, _state: &mut dyn std::any::Any, payload: Option<Value>) {
+        let _ = self(extract_string_payload(&payload));
+    }
+}
+
+impl<F, R> ActionHandler<(bool, R), ()> for F
+where
+    F: Fn(bool) -> R + Send + Sync + 'static,
+    R: 'static,
+{
+    fn invoke(&self, _state: &mut dyn std::any::Any, payload: Option<Value>) {
+        let b = match &payload {
+            Some(Value::Bool(v)) => *v,
+            Some(Value::Object(m)) => m.get("value").and_then(|v| v.as_bool()).unwrap_or(false),
+            _ => false,
+        };
+        let _ = self(b);
+    }
+}
+
 pub fn register_handler<H, Args, S>(handler: H) -> String
 where
     H: ActionHandler<Args, S>,
